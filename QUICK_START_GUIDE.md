@@ -67,7 +67,7 @@ This demonstrates:
 #### Terminal 1: Start HTTP Server (Vulnerable)
 
 ```bash
-python src/http_server.py --host 127.0.0.1 --port 8000
+python http_https_server.py --type http --host 127.0.0.1 --port 8000
 ```
 
 Expected output:
@@ -80,11 +80,11 @@ STARTING VULNERABLE HTTP SERVER
 #### Terminal 2: Start Packet Sniffer (Attack)
 
 ```bash
-# Linux/macOS
-sudo python src/network_sniffer.py --port 8000
+# Linux/macOS (requires root for packet capture)
+sudo python network_sniffer.py --port 8000
 
 # If permission issues, try:
-python src/network_sniffer.py --port 8000
+python network_sniffer.py --port 8000
 ```
 
 Expected output:
@@ -97,7 +97,7 @@ NETWORK PACKET SNIFFER - MITM DEMONSTRATION
 #### Terminal 3: Run HTTP Client (Victim)
 
 ```bash
-python src/http_client.py --server 127.0.0.1 --port 8000
+python http_https_client.py --type http --server 127.0.0.1 --port 8000
 ```
 
 **Observe**: Credentials captured in plaintext!
@@ -122,7 +122,7 @@ python src/http_client.py --server 127.0.0.1 --port 8000
 #### Terminal 1: Start HTTPS Server (Secure)
 
 ```bash
-python src/https_server.py --host 127.0.0.1 --port 8443
+python http_https_server.py --type https --host 127.0.0.1 --port 8443
 ```
 
 Expected output:
@@ -136,14 +136,58 @@ STARTING SECURE HTTPS SERVER
 #### Terminal 2: Start Packet Sniffer
 
 ```bash
-sudo python src/network_sniffer.py --port 8443
+sudo python network_sniffer.py --port 8443
 ```
 
 #### Terminal 3: Run HTTPS Client
 
 ```bash
-python src/https_client.py --server 127.0.0.1 --port 8443
+python http_https_client.py --type https --server 127.0.0.1 --port 8443
 ```
+
+---
+
+### Active MITM Bank Attack Demo (Requires 3 Terminals + Browser)
+
+#### Terminal 1: Start the vulnerable Flask bank server
+
+```bash
+flask --app bank_app run --port 5000
+```
+
+#### Terminal 2: Start the active MITM proxy
+
+```bash
+python mitm_proxy.py --listen-port 9000 --target-port 5000 --mode http --modify
+```
+
+#### Browser: Open the bank as a victim would
+
+```
+http://127.0.0.1:9000
+```
+
+Login as `alice / alice123`, transfer **100 credits** to bob.
+
+**Observe in Terminal 2**: The proxy silently changes `amount=100` to `amount=1000`!
+
+---
+
+### HTTPS Bank Defense Demo (TLS Defeats the Proxy)
+
+#### Terminal 1: Start the secure HTTPS bank server
+
+```bash
+flask --app bank_app run --port 5443 --cert certs/server_cert.pem --key certs/server_key.pem
+```
+
+#### Terminal 2: Start the proxy in raw (TLS-aware) mode
+
+```bash
+python mitm_proxy.py --listen-port 9443 --target-port 5443 --mode raw
+```
+
+**Observe**: The proxy now sees only encrypted binary — cannot read or modify anything.
 
 **Observe**: Credentials are NOT visible in sniffer!
 
@@ -246,7 +290,7 @@ python rsa_crypto.py
 
 **Solution**: Run with sudo
 ```bash
-sudo python src/network_sniffer.py --port 8000
+sudo python network_sniffer.py --port 8000
 ```
 
 Or add user to pcap group (permanent):
@@ -273,7 +317,7 @@ lsof -i :8000
 kill -9 <PID>
 
 # Or use different port
-python src/http_server.py --port 9000
+python http_https_server.py --type http --port 9000
 ```
 
 ### Issue: Certificate validation errors
