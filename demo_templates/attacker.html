@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔴 MITM Hacker Console</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+  :root {
+    --bg: #0a0a0a; --surface: #111; --border: #2a0a0a; --border2: #1f1f1f;
+    --red: #ef4444; --red2: #dc2626; --orange: #f97316;
+    --green: #22c55e; --blue: #3b82f6; --muted: #6b7280;
+    --text: #e5e7eb; --mono: 'JetBrains Mono', monospace;
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
+    min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #1a0000, #2d0000);
+    padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #7f1d1d; box-shadow: 0 4px 20px rgba(239,68,68,.2);
+  }
+  .logo { font-size: 1.2rem; font-weight: 700; color: var(--red); display:flex; align-items:center; gap:10px; }
+  .pulse-dot { width:10px; height:10px; background:var(--red); border-radius:50%;
+    animation: blink 1.2s infinite; box-shadow: 0 0 8px var(--red); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  #pkt-counter { font-family: var(--mono); font-size:.8rem; color:var(--red); background:rgba(239,68,68,.1);
+    padding:5px 12px; border-radius:20px; border:1px solid rgba(239,68,68,.3); }
+
+  /* ── Controls ── */
+  .controls {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+    padding: 20px 24px; border-bottom: 1px solid var(--border2);
+    background: #0f0f0f;
+  }
+  .ctrl-block {
+    background: var(--surface); border-radius: 12px; padding: 16px;
+    border: 1px solid var(--border2);
+  }
+  .ctrl-label { font-size:.72rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:12px; }
+  .ctrl-title { font-size:1rem; font-weight:600; margin-bottom:4px; }
+
+  /* Toggle switch */
+  .toggle-row { display:flex; align-items:center; gap:12px; margin-top:10px; }
+  .toggle { position:relative; width:52px; height:27px; cursor:pointer; }
+  .toggle input { opacity:0; width:0; height:0; }
+  .slider {
+    position:absolute; inset:0; background:#374151; border-radius:27px; transition:.3s;
+  }
+  .slider::before {
+    content:''; position:absolute; width:21px; height:21px; left:3px; top:3px;
+    background:#fff; border-radius:50%; transition:.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,.4);
+  }
+  input:checked + .slider { background: var(--red); }
+  input:checked + .slider::before { transform: translateX(25px); }
+  #https-toggle input:checked + .slider { background: var(--blue); }
+
+  .toggle-status { font-size:.85rem; font-weight:600; }
+  .status-off { color: var(--muted); } .status-on { color: var(--red); }
+  #https-status.on { color: var(--blue); }
+
+  /* Multiplier */
+  .mult-row { display:flex; align-items:center; gap:10px; margin-top:10px; }
+  .mult-input {
+    width:70px; padding:7px 12px; background:#0a0a0a; border:1px solid #374151;
+    border-radius:8px; color:var(--text); font-family:var(--mono); font-size:1rem;
+    font-weight:600; text-align:center;
+  }
+  .mult-btn {
+    padding:6px 12px; background:#1f2937; border:1px solid #374151; border-radius:8px;
+    color:var(--text); cursor:pointer; font-size:1rem; transition:.15s;
+  }
+  .mult-btn:hover { background:#374151; }
+
+  /* Reset */
+  .reset-btn {
+    width:100%; padding:10px; background:rgba(239,68,68,.1); color:var(--red);
+    border:1px solid rgba(239,68,68,.3); border-radius:10px; cursor:pointer;
+    font-weight:600; font-size:.85rem; transition:.15s; margin-top:10px;
+  }
+  .reset-btn:hover { background:rgba(239,68,68,.2); }
+
+  /* ── Packet stream ── */
+  .stream-header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 14px 24px; background:#0f0f0f; border-bottom:1px solid var(--border2);
+  }
+  .stream-title { font-size:.85rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  .clear-btn { font-size:.75rem; color:var(--muted); background:none; border:none; cursor:pointer; }
+  .clear-btn:hover { color:var(--text); }
+
+  #stream {
+    flex:1; overflow-y:auto; padding:16px 24px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+
+  .pkt {
+    border-radius: 12px; padding: 16px; font-family: var(--mono);
+    font-size:.82rem; border-left: 4px solid; animation: slideIn .3s ease;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:none} }
+
+  .pkt.plaintext { background:rgba(251,191,36,.05); border-color:#fbbf24; }
+  .pkt.attack    { background:rgba(239,68,68,.07);  border-color:var(--red);  }
+  .pkt.https     { background:rgba(59,130,246,.05); border-color:var(--blue); }
+  .pkt.cred      { background:rgba(239,68,68,.1);   border-color:var(--red); border-width:2px; }
+  .pkt.cred-https{ background:rgba(59,130,246,.07); border-color:var(--blue); }
+
+  .cred-display {
+    margin: 10px 0; padding: 14px; border-radius: 10px;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(239,68,68,.3);
+  }
+  .cred-row { display:flex; align-items:baseline; gap:10px; margin:6px 0; }
+  .cred-key { color:var(--muted); font-family:var(--mono); font-size:.75rem; min-width:90px; text-transform:uppercase; letter-spacing:1px; }
+  .cred-val-user { color:#fbbf24; font-family:var(--mono); font-size:1.1rem; font-weight:700; }
+  .cred-val-pass { color:var(--red); font-family:var(--mono); font-size:1.4rem; font-weight:800; letter-spacing:3px; text-shadow: 0 0 10px rgba(239,68,68,.5); }
+
+
+  .pkt-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .pkt-badge {
+    font-size:.7rem; padding:3px 10px; border-radius:12px; font-weight:700;
+    letter-spacing:.5px;
+  }
+  .pkt.plaintext .pkt-badge { background:rgba(251,191,36,.15); color:#fbbf24; }
+  .pkt.attack    .pkt-badge { background:rgba(239,68,68,.15);  color:var(--red);   }
+  .pkt.https     .pkt-badge { background:rgba(59,130,246,.15); color:var(--blue);  }
+
+  .pkt-time { font-size:.72rem; color:var(--muted); }
+
+  .field-row { display:flex; gap:6px; align-items:baseline; margin:3px 0; }
+  .field-key { color:var(--muted); min-width:90px; }
+  .field-val { color:var(--text); }
+  .field-val.strike { text-decoration:line-through; color:#6b7280; }
+  .field-val.modified { color:var(--red); font-weight:700; background:rgba(239,68,68,.1);
+    padding:1px 6px; border-radius:4px; }
+  .field-val.encrypted { color:var(--blue); word-break:break-all; font-size:.7rem; }
+
+  .pkt-verdict {
+    margin-top:12px; padding:8px 12px; border-radius:8px;
+    font-size:.78rem; font-weight:600;
+  }
+  .verdict-read { background:rgba(251,191,36,.1); color:#fbbf24; }
+  .verdict-mod  { background:rgba(239,68,68,.1);  color:var(--red);   }
+  .verdict-enc  { background:rgba(59,130,246,.1); color:var(--blue);  }
+
+  .empty-state { text-align:center; color:var(--muted); padding:40px; font-size:.9rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><div class="pulse-dot"></div>⚠ MITM ATTACKER CONSOLE</div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <div id="pkt-counter">📦 Packets intercepted: 0</div>
+    <div id="cred-counter" style="color:#fbbf24; font-weight:700;">🔑 Credentials stolen: 0</div>
+  </div>
+</header>
+
+<div class="controls">
+  <!-- Attack Toggle -->
+  <div class="ctrl-block">
+    <div class="ctrl-label">🎯 Attack Mode</div>
+    <div class="ctrl-title">Intercept & Modify</div>
+    <div class="toggle-row">
+      <label class="toggle" id="atk-toggle">
+        <input type="checkbox" id="attack-chk" onchange="toggleAttack(this.checked)">
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-status status-off" id="attack-status">OFF</span>
+    </div>
+  </div>
+
+  <!-- HTTPS Toggle -->
+  <div class="ctrl-block">
+    <div class="ctrl-label">🔒 HTTPS Mode</div>
+    <div class="ctrl-title">Force TLS Encryption</div>
+    <div class="toggle-row">
+      <label class="toggle" id="https-toggle">
+        <input type="checkbox" id="https-chk" onchange="toggleHttps(this.checked)">
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-status status-off" id="https-status">OFF</span>
+    </div>
+  </div>
+
+  <!-- Amount Multiplier + Reset -->
+  <div class="ctrl-block">
+    <div class="ctrl-label">✖ Amount Multiplier</div>
+    <div class="ctrl-title">Multiply by:</div>
+    <div class="mult-row">
+      <button class="mult-btn" onclick="adjMult(-1)">−</button>
+      <input class="mult-input" type="number" id="mult-input" value="10" min="1" max="100" onchange="setMult()">
+      <button class="mult-btn" onclick="adjMult(1)">+</button>
+    </div>
+    <button class="reset-btn" onclick="resetDemo()">🔄 Reset Demo</button>
+  </div>
+</div>
+
+<div class="stream-header">
+  <span class="stream-title">📡 Live Packet Stream</span>
+  <button class="clear-btn" onclick="clearStream()">Clear</button>
+</div>
+
+<div id="stream">
+  <div class="empty-state" id="empty">
+    Waiting for packets...<br>Ask Alice to send a transfer 👆
+  </div>
+</div>
+
+<script>
+const socket = io();
+let pktCount = 0, credCount = 0;
+
+function now() {
+  return new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function toggleAttack(on) {
+  fetch('/set_mode', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ attack: on }) });
+}
+function toggleHttps(on) {
+  fetch('/set_mode', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ https: on }) });
+}
+function setMult() {
+  const v = parseInt(document.getElementById('mult-input').value) || 10;
+  fetch('/set_mode', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ multiplier: v }) });
+}
+function adjMult(d) {
+  const el = document.getElementById('mult-input');
+  el.value = Math.max(1, Math.min(100, (parseInt(el.value)||10) + d));
+  setMult();
+}
+function resetDemo() {
+  fetch('/reset', { method:'POST' });
+}
+function clearStream() {
+  document.getElementById('stream').innerHTML =
+    '<div class="empty-state" id="empty">Stream cleared. Waiting for packets...</div>';
+  pktCount = 0;
+  credCount = 0;
+  document.getElementById('pkt-counter').textContent = '📦 Packets intercepted: 0';
+  document.getElementById('cred-counter').textContent = '🔑 Credentials stolen: 0';
+}
+
+socket.on('mode_change', d => {
+  document.getElementById('attack-chk').checked = d.attack_active;
+  document.getElementById('https-chk').checked  = d.https_mode;
+  document.getElementById('mult-input').value   = d.multiplier;
+  const aStat = document.getElementById('attack-status');
+  const hStat = document.getElementById('https-status');
+  aStat.textContent = d.attack_active ? 'ON' : 'OFF';
+  aStat.className   = 'toggle-status ' + (d.attack_active ? 'status-on' : 'status-off');
+  hStat.textContent = d.https_mode ? 'ON' : 'OFF';
+  hStat.className   = 'toggle-status ' + (d.https_mode ? 'on' : 'status-off');
+});
+
+socket.on('intercept', pkt => {
+  const empty = document.getElementById('empty');
+  if (empty) empty.remove();
+  pktCount++;
+  document.getElementById('pkt-counter').textContent = `📦 Packets intercepted: ${pktCount}`;
+
+  const stream = document.getElementById('stream');
+  const div = document.createElement('div');
+
+  if (pkt.mode === 'https') {
+    div.className = 'pkt https';
+    div.innerHTML = `
+      <div class="pkt-header">
+        <span class="pkt-badge">🔒 ENCRYPTED (TLS)</span>
+        <span class="pkt-time">${now()}</span>
+      </div>
+      <div class="field-row"><span class="field-key">Ciphertext:</span>
+        <span class="field-val encrypted">${pkt.hex}</span></div>
+      <div class="pkt-verdict verdict-enc">
+        🔒 Cannot read — TLS-protected. Modification impossible — any tampering breaks HMAC integrity.
+      </div>`;
+  } else if (pkt.mode === 'attack') {
+    div.className = 'pkt attack';
+    div.innerHTML = `
+      <div class="pkt-header">
+        <span class="pkt-badge">💀 INTERCEPTED & MODIFIED</span>
+        <span class="pkt-time">${now()}</span>
+      </div>
+      <div class="field-row"><span class="field-key">Sender:</span><span class="field-val">${pkt.sender}</span></div>
+      <div class="field-row"><span class="field-key">Recipient:</span><span class="field-val">${pkt.recipient}</span></div>
+      <div class="field-row"><span class="field-key">Original ₹:</span><span class="field-val strike">₹${pkt.original}</span></div>
+      <div class="field-row"><span class="field-key">Modified ₹:</span><span class="field-val modified">₹${pkt.modified} 🔺</span></div>
+      <div class="pkt-verdict verdict-mod">
+        ⚡ TAMPERED — Amount multiplied by ${pkt.modified/pkt.original}x. Alice has NO idea!
+      </div>`;
+  } else {
+    div.className = 'pkt plaintext';
+    div.innerHTML = `
+      <div class="pkt-header">
+        <span class="pkt-badge">👁 READABLE (No Attack)</span>
+        <span class="pkt-time">${now()}</span>
+      </div>
+      <div class="field-row"><span class="field-key">Sender:</span><span class="field-val">${pkt.sender}</span></div>
+      <div class="field-row"><span class="field-key">Recipient:</span><span class="field-val">${pkt.recipient}</span></div>
+      <div class="field-row"><span class="field-key">Amount:</span><span class="field-val">₹${pkt.amount}</span></div>
+      <div class="pkt-verdict verdict-read">
+        👁 I CAN READ everything — but attack is OFF. Turn on attack to modify this!
+      </div>`;
+  }
+  stream.prepend(div);
+});
+
+socket.on('reset_all', () => location.reload());
+
+// ── Credential Interception ─────────────────────────────────────────────────
+socket.on('credential_intercept', pkt => {
+  const empty = document.getElementById('empty');
+  if (empty) empty.remove();
+  pktCount++;
+  document.getElementById('pkt-counter').textContent = `📦 Packets intercepted: ${pktCount}`;
+
+  const stream = document.getElementById('stream');
+  const div = document.createElement('div');
+
+  if (pkt.mode === 'https') {
+    div.className = 'pkt cred-https';
+    div.innerHTML = `
+      <div class="pkt-header">
+        <span class="pkt-badge">🔒 LOGIN ENCRYPTED (TLS)</span>
+        <span class="pkt-time">${now()}</span>
+      </div>
+      <div class="field-row"><span class="field-key">Ciphertext:</span>
+        <span class="field-val encrypted">${pkt.hex.substring(0,80)}…</span></div>
+      <div class="pkt-verdict verdict-enc">
+        ${pkt.attack_attempted
+          ? '⚔️ ATTACK WAS ACTIVE but TLS encryption blocked all credential theft attempts!'
+          : '🔒 Credentials encrypted — username and password are completely hidden from me.'}
+      </div>`;
+  } else {
+    credCount++;
+    document.getElementById('cred-counter').textContent = `🔑 Credentials stolen: ${credCount}`;
+    div.className = 'pkt cred';
+    div.innerHTML = `
+      <div class="pkt-header">
+        <span class="pkt-badge" style="font-size:.8rem;">💀 CREDENTIALS STOLEN!</span>
+        <span class="pkt-time">${now()}</span>
+      </div>
+      <div class="cred-display">
+        <div class="cred-row">
+          <span class="cred-key">Username</span>
+          <span class="cred-val-user">${pkt.username}</span>
+        </div>
+        <div class="cred-row">
+          <span class="cred-key">Password</span>
+          <span class="cred-val-pass">${pkt.password}</span>
+        </div>
+      </div>
+      <div class="pkt-verdict verdict-mod">
+        🔑 CREDENTIAL THEFT COMPLETE! I now have full login access. Alice has NO idea!
+      </div>`;
+  }
+  stream.prepend(div);
+});
+
+
+// Load initial state
+fetch('/state').then(r=>r.json()).then(s => {
+  document.getElementById('attack-chk').checked = s.attack_active;
+  document.getElementById('https-chk').checked  = s.https_mode;
+  document.getElementById('mult-input').value   = s.multiplier;
+  const aStat = document.getElementById('attack-status');
+  aStat.textContent = s.attack_active ? 'ON' : 'OFF';
+  aStat.className   = 'toggle-status ' + (s.attack_active ? 'status-on' : 'status-off');
+});
+</script>
+</body>
+</html>
