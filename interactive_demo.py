@@ -64,6 +64,8 @@ class InteractiveDemo:
         print("[7] Packet Sniffing Demo")
         print("[8] View Captured Data Log")
         print("[9] Run All Demonstrations")
+        print("[10] Active MITM Bank Attack         [NEW]")
+        print("[11] HTTPS Bank Defense — TLS vs Proxy  [NEW]")
         print("[0] Exit")
         print("\n" + "=" * 70)
 
@@ -199,6 +201,50 @@ class InteractiveDemo:
             print("[*] No logs found")
             print("    Run demonstrations first to generate logs")
 
+    def demo_active_mitm_bank(self):
+        """Demonstrate active MITM attack against the Flask bank app"""
+        print("\n" + Fore.RED + "[DEMO 10] ACTIVE MITM BANK ATTACK" + Style.RESET_ALL)
+        print("-" * 70)
+        print("\n[\u26a0\ufe0f ] This demo shows how an active MITM proxy silently TAMPERS with")
+        print("      live HTTP bank transactions — multiplying transfer amounts by 10x!\n")
+
+        print("[*] Setup — open 3 terminals:\n")
+        print("  Terminal 1  Start the vulnerable HTTP bank server:")
+        print(f"  {Fore.CYAN}  flask --app bank_app run --port 5000{Style.RESET_ALL}\n")
+        print("  Terminal 2  Start the active MITM proxy:")
+        print(f"  {Fore.RED}  python mitm_proxy.py --listen-port 9000 --target-port 5000 --mode http --modify{Style.RESET_ALL}\n")
+        print("  Terminal 3  Open browser at (victim connects through proxy):")
+        print(f"  {Fore.YELLOW}  http://127.0.0.1:9000{Style.RESET_ALL}\n")
+
+        print("[*] What to observe:")
+        print("  1. Login as  alice / alice123  (starting balance: 5000 credits)")
+        print("  2. Transfer  100 credits  to bob")
+        print("  3. MITM proxy intercepts the POST and silently changes 100 -> 1000")
+        print("  4. Bob receives 1000 credits — alice pays 10x without any warning")
+        print(f"\n  {Fore.RED}[Key Insight] HTTP provides ZERO protection vs active tampering!{Style.RESET_ALL}")
+
+    def demo_https_bank_defense(self):
+        """Demonstrate TLS defeating the active MITM proxy on the bank app"""
+        print("\n" + Fore.GREEN + "[DEMO 11] HTTPS BANK DEFENSE — TLS DEFEATS THE PROXY" + Style.RESET_ALL)
+        print("-" * 70)
+        print("\n[\u2713] This demo shows that TLS makes the MITM proxy completely blind.\n")
+
+        print("[*] Prerequisite: Generate certs first (run Demo [1]).\n")
+
+        print("[*] Setup — open 3 terminals:\n")
+        print("  Terminal 1  Start the SECURE HTTPS bank server:")
+        print(f"  {Fore.CYAN}  flask --app bank_app run --port 5443 --cert certs/server_cert.pem --key certs/server_key.pem{Style.RESET_ALL}\n")
+        print("  Terminal 2  Start MITM proxy in raw (TLS-aware) mode:")
+        print(f"  {Fore.YELLOW}  python mitm_proxy.py --listen-port 9443 --target-port 5443 --mode raw{Style.RESET_ALL}\n")
+        print("  Terminal 3  Open browser at (accept self-signed cert warning):")
+        print(f"  {Fore.YELLOW}  https://127.0.0.1:5443{Style.RESET_ALL}\n")
+
+        print("[*] What to observe:")
+        print("  1. Proxy sees only encrypted binary (hex dump) — cannot read anything")
+        print("  2. Cannot read usernames, passwords, or transfer amounts in transit")
+        print("  3. Cannot modify the transfer amount — TLS HMAC detects any tampering")
+        print(f"\n  {Fore.GREEN}[Key Insight] TLS encryption + HMAC integrity defeats the active MITM!{Style.RESET_ALL}")
+
     def run_all_demos(self):
         """Run all demonstrations"""
         print("\n" + Fore.YELLOW + "[RUNNING ALL DEMONSTRATIONS]" + Style.RESET_ALL)
@@ -238,7 +284,7 @@ class InteractiveDemo:
             self.print_menu()
 
             try:
-                choice = input(f"\n{Fore.CYAN}Select option [0-9]: {Style.RESET_ALL}")
+                choice = input(f"\n{Fore.CYAN}Select option [0-11]: {Style.RESET_ALL}")
 
                 if choice == '1':
                     self.demo_certificates()
@@ -258,6 +304,10 @@ class InteractiveDemo:
                     self.view_logs()
                 elif choice == '9':
                     self.run_all_demos()
+                elif choice == '10':
+                    self.demo_active_mitm_bank()
+                elif choice == '11':
+                    self.demo_https_bank_defense()
                 elif choice == '0':
                     print(f"\n{Fore.YELLOW}[*] Exiting...{Style.RESET_ALL}")
                     self.demo_running = False
