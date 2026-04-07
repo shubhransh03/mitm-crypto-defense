@@ -63,7 +63,7 @@ class DiffieHellmanKeyExchange:
     def get_public_key_bytes(self):
         """Export public key as bytes"""
         return self.public_key.public_bytes(
-            encoding=serialization.Encoding.X25519,
+            encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         )
 
