@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MITM Demonstration Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090b; --surface: #18181b; --text: #e4e4e7;
+    --blue: #3b82f6; --red: #ef4444; --green: #22c55e; --purple: #a855f7;
+    --blue-bg: rgba(59,130,246,0.1); --red-bg: rgba(239,68,68,0.1);
+    --green-bg: rgba(34,197,94,0.1); --purple-bg: rgba(168,85,247,0.1);
+    --hover: #27272a;
+  }
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0; padding: 0;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .container {
+    max-width: 1000px;
+    width: 90%;
+    margin: 40px auto;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  h1 {
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin-bottom: 15px;
+    background: linear-gradient(to right, #60a5fa, #c084fc);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    font-size: 1.1rem;
+    color: #a1a1aa;
+    line-height: 1.6;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-top: 40px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid #3f3f46;
+    border-radius: 16px;
+    padding: 30px;
+    text-decoration: none;
+    color: var(--text);
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: #52525b;
+    background: var(--hover);
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .icon-box {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+  }
+  .card.client .icon-box { background: var(--blue-bg); color: var(--blue); }
+  .card.attacker .icon-box { background: var(--red-bg); color: var(--red); }
+  .card.bank .icon-box { background: var(--green-bg); color: var(--green); }
+  .card.crypto .icon-box { background: var(--purple-bg); color: var(--purple); }
+  
+  .card-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+  }
+  .card-desc {
+    color: #a1a1aa;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  
+  .instructions {
+    background: rgba(255,255,255,0.03);
+    border-radius: 12px;
+    padding: 24px;
+    margin-top: 48px;
+    border: 1px solid #27272a;
+  }
+  .instructions h3 { margin-top: 0; color: #e4e4e7; }
+  .instructions p { color: #a1a1aa; line-height: 1.6; margin-bottom:0; font-size: 0.95rem; }
+  
+  .advanced-section {
+    margin-top: 40px;
+    text-align: center;
+    padding-top: 20px;
+    border-top: 1px dashed #3f3f46;
+    color: #71717a;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>MITM Attack Demonstration</h1>
+    <div class="subtitle">Live simulation exploring Man-in-the-Middle attacks, credential theft over HTTP, and how TLS provides confidentiality and integrity.</div>
+  </header>
+
+  <div class="grid">
+    <a href="/client" target="_blank" class="card client">
+      <div class="card-header">
+        <div class="icon-box">👩</div>
+        <div class="card-title">Alice's App</div>
+      </div>
+      <div class="card-desc">The victim's perspective. Send money or login to the bank application in either secure or vulnerable modes.</div>
+    </a>
+    
+    <a href="/attacker" target="_blank" class="card attacker">
+      <div class="card-header">
+        <div class="icon-box">💀</div>
+        <div class="card-title">Attacker Console</div>
+      </div>
+      <div class="card-desc">The hacker's view on the local network. Intercept packets in transit, steal login credentials, or tamper with transactions.</div>
+    </a>
+
+    <a href="/bank" target="_blank" class="card bank">
+      <div class="card-header">
+        <div class="icon-box">🏛</div>
+        <div class="card-title">Bank Dashboard</div>
+      </div>
+      <div class="card-desc">The server's perspective. Monitor incoming login attempts and track successful or tampered money transfers.</div>
+    </a>
+
+    <a href="/crypto" target="_blank" class="card crypto">
+      <div class="card-header">
+        <div class="icon-box">🔐</div>
+        <div class="card-title">Crypto Engine</div>
+      </div>
+      <div class="card-desc">The educational perspective. See the underlying logic: AES, DH Key Exchange, RSA, ECDSA, and Certificate Pinning.</div>
+    </a>
+  </div>
+
+  <div class="instructions">
+    <h3>📌 Presenter Instructions</h3>
+    <p>For the best experience during your presentation: <strong>Open all 4 windows simultaneously</strong> (arranged in a 2x2 grid or on separate monitors). When Alice performs an action, you will instantly see the cascading effects across the attacker's console, the bank's feed, and the live cryptographic analysis engine.</p>
+  </div>
+
+  <div class="advanced-section">
+    <p><strong>Advanced / Standalone Modules</strong><br>The workspace also includes <code>arp_spoofer.py</code>, <code>dns_spoofer.py</code>, and a standalone <code>bank_server.py</code> available for deeper command-line exploration outside of this browser-based visual demo.</p>
+  </div>
+</div>
+
+</body>
+</html>
