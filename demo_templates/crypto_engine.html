@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crypto Engine — Live Security Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #080c10; --surface: #0d1117; --card: #161b22; --border: #21262d;
+    --purple: #a855f7; --purple2: #7c3aed; --purple-glow: rgba(168,85,247,.25);
+    --green: #22c55e;  --green-dim: rgba(34,197,94,.12);
+    --red: #ef4444;    --red-dim: rgba(239,68,68,.12);
+    --yellow: #f59e0b; --yellow-dim: rgba(245,158,11,.12);
+    --blue: #3b82f6;   --blue-dim: rgba(59,130,246,.12);
+    --cyan: #06b6d4;   --cyan-dim: rgba(6,182,212,.12);
+    --text: #e6edf3;   --muted: #8b949e;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #1a0533 0%, #2d1260 50%, #1a0533 100%);
+    padding: 16px 28px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(168,85,247,.4);
+    box-shadow: 0 4px 30px rgba(168,85,247,.2);
+  }
+  .logo { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 12px; }
+  .logo-icon { font-size: 1.8rem; filter: drop-shadow(0 0 10px var(--purple)); }
+  .logo-sub { font-size: .75rem; color: var(--purple); font-weight: 400; letter-spacing: 2px; text-transform: uppercase; }
+  #status-banner {
+    padding: 8px 18px; border-radius: 30px; font-size: .8rem; font-weight: 600;
+    border: 1px solid rgba(168,85,247,.3); background: rgba(168,85,247,.1); color: var(--purple);
+    transition: all .4s;
+  }
+  #status-banner.secure  { background: var(--green-dim); color: var(--green); border-color: rgba(34,197,94,.3); }
+  #status-banner.attack  { background: var(--red-dim); color: var(--red); border-color: rgba(239,68,68,.3); animation: flashRed 1.5s infinite; }
+  #status-banner.waiting { background: rgba(168,85,247,.1); color: var(--purple); }
+
+  /* ── Idle overlay ── */
+  #idle-overlay {
+    position: fixed; inset: 60px 0 0 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: var(--bg); transition: opacity .5s;
+  }
+  #idle-overlay.hidden { opacity: 0; pointer-events: none; }
+  .idle-icon { font-size: 5rem; margin-bottom: 20px; animation: breathe 3s ease-in-out infinite; }
+  .idle-title { font-size: 1.8rem; font-weight: 700; color: var(--purple); margin-bottom: 10px; }
+  .idle-sub { color: var(--muted); font-size: 1rem; }
+  .pulse-ring {
+    width: 120px; height: 120px; border-radius: 50%; border: 2px solid var(--purple);
+    position: absolute; animation: ringPulse 2s ease-out infinite;
+    opacity: .4;
+  }
+  .pulse-ring:nth-child(2) { animation-delay: .7s; }
+  .pulse-ring:nth-child(3) { animation-delay: 1.4s; }
+
+  /* ── Layout ── */
+  .page { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+
+  /* Transfer Summary Bar */
+  #tx-bar {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 24px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    opacity: 0; transition: opacity .4s;
+  }
+  #tx-bar.visible { opacity: 1; }
+  .tx-chip {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: .82rem;
+  }
+  .tx-chip .label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+  .tx-chip .value { font-weight: 700; font-family: var(--mono); }
+  .tx-chip.danger .value { color: var(--red); }
+  .tx-chip.success .value { color: var(--green); }
+  .tx-chip.warn .value { color: var(--yellow); }
+
+  /* Grid */
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .span-2 { grid-column: span 2; }
+  .span-3 { grid-column: span 3; }
+
+  /* Module Card */
+  .mod-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px; position: relative; overflow: hidden;
+    transition: border-color .4s, box-shadow .4s;
+  }
+  .mod-card.active { border-color: var(--purple); box-shadow: 0 0 20px var(--purple-glow); }
+  .mod-card.ok     { border-color: rgba(34,197,94,.4); box-shadow: 0 0 16px rgba(34,197,94,.1); }
+  .mod-card.fail   { border-color: rgba(239,68,68,.4); box-shadow: 0 0 16px rgba(239,68,68,.1); animation: flashRed 1.5s 3; }
+
+  .mod-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .mod-icon { font-size: 1.5rem; }
+  .mod-title { font-size: .9rem; font-weight: 700; }
+  .mod-file { font-size: .7rem; color: var(--purple); font-family: var(--mono); }
+  .mod-badge {
+    margin-left: auto; padding: 3px 10px; border-radius: 20px; font-size: .7rem; font-weight: 700;
+    background: rgba(107,114,128,.2); color: var(--muted); transition: all .4s;
+  }
+  .mod-badge.ok   { background: var(--green-dim); color: var(--green); }
+  .mod-badge.fail { background: var(--red-dim); color: var(--red); }
+  .mod-badge.computing { background: rgba(168,85,247,.2); color: var(--purple); }
+
+  /* Data rows */
+  .data-row { margin-bottom: 10px; }
+  .data-label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 3px; }
+  .data-value {
+    font-family: var(--mono); font-size: .78rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 7px 10px; border-radius: 7px; word-break: break-all; line-height: 1.5;
+    transition: background .4s, color .4s;
+  }
+  .data-value.highlight { background: rgba(168,85,247,.1); border-color: rgba(168,85,247,.3); color: #c084fc; }
+  .data-value.ok-val    { background: var(--green-dim); border-color: rgba(34,197,94,.3); color: var(--green); }
+  .data-value.fail-val  { background: var(--red-dim); border-color: rgba(239,68,68,.3); color: var(--red); }
+
+  /* Status result */
+  .result-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .result-icon { font-size: 1.3rem; }
+  .result-text { font-size: .82rem; font-weight: 600; }
+  .result-text.ok   { color: var(--green); }
+  .result-text.fail { color: var(--red); }
+  .result-text.warn { color: var(--yellow); }
+
+  /* Flow diagram in DH card */
+  .dh-flow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .dh-party { text-align: center; }
+  .dh-party-name { font-size: .75rem; font-weight: 700; margin-bottom: 6px; }
+  .dh-party-name.alice { color: var(--blue); }
+  .dh-party-name.server { color: var(--green); }
+  .dh-key-box { font-family: var(--mono); font-size: .68rem; padding: 5px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); max-width: 130px; word-break: break-all; }
+  .dh-arrow { color: var(--purple); font-size: 1.2rem; flex: 1; text-align: center; }
+
+  /* MITM flow */
+  .mitm-flow { position: relative; }
+  .mitm-steps { display: flex; flex-direction: column; gap: 8px; }
+  .mitm-step { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: .78rem; background: var(--surface); border: 1px solid var(--border); }
+  .mitm-step-num { width:20px; height:20px; border-radius:50%; display:flex;align-items:center;justify-content:center; font-size:.65rem; font-weight:700; flex-shrink:0; }
+  .mitm-step.ok-step .mitm-step-num { background: var(--green-dim); color: var(--green); }
+  .mitm-step.fail-step .mitm-step-num { background: var(--red-dim); color: var(--red); }
+  .mitm-step.warn-step .mitm-step-num { background: var(--yellow-dim); color: var(--yellow); }
+
+  /* Cert card */
+  .cert-field { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: .78rem; }
+  .cert-field:last-child { border-bottom: none; }
+  .cert-key { color: var(--muted); }
+  .cert-val { font-family: var(--mono); color: var(--cyan); font-size: .72rem; max-width: 60%; text-align: right; word-break: break-all; }
+
+  /* Pinning bands */
+  .pin-band { border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size:.78rem; display:flex; align-items:center; gap:8px; }
+  .pin-band.ok   { background: var(--green-dim); border: 1px solid rgba(34,197,94,.3); color: var(--green); }
+  .pin-band.fail { background: var(--red-dim); border: 1px solid rgba(239,68,68,.3); color: var(--red); }
+  .pin-band.info { background: var(--blue-dim); border: 1px solid rgba(59,130,246,.3); color: var(--blue); }
+
+  /* Shimmer loading */
+  .shimmer { animation: shimmerAnim 1s infinite; }
+  @keyframes shimmerAnim { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+  /* Comparison table */
+  .cmp-table { width:100%; border-collapse:collapse; font-size:.75rem; }
+  .cmp-table th { font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; padding:6px 10px; border-bottom:1px solid var(--border); text-align:left; }
+  .cmp-table td { padding:8px 10px; border-bottom:1px solid rgba(33,38,45,.8); font-family:var(--mono); }
+  .cmp-table tr:last-child td { border:none; }
+  .cmp-table .highlight-row td { color: var(--purple); }
+
+  /* Animations */
+  /* Credential Analysis Card */
+  #cred-card { display:none; margin-bottom:16px; }
+  #cred-card.visible { display:block; }
+  .cred-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .cred-section-title { font-size:.82rem; font-weight:700; margin-bottom:12px; }
+  .cred-section-title.danger { color:var(--red); }
+  .cred-section-title.safe   { color:var(--green); }
+  .pw-exposed { font-family:var(--mono); font-size:1.3rem; font-weight:800; color:var(--red);
+    letter-spacing:3px; padding: 8px 12px; background:var(--red-dim); border-radius:8px;
+    border:1px solid rgba(239,68,68,.4); text-shadow:0 0 12px rgba(239,68,68,.4); margin:4px 0; }
+  .pw-protected { font-family:var(--mono); font-size:.82rem; color:var(--green);
+    padding:8px 12px; background:var(--green-dim); border-radius:8px;
+    border:1px solid rgba(34,197,94,.3); margin:4px 0; }
+
+  /* View Tabs */
+  .view-tabs { display:flex; gap:12px; margin-bottom:20px; }
+  .view-tab { background:var(--surface); border:1px solid var(--border); color:var(--muted); padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:700; transition:all .2s; font-family:inherit; }
+  .view-tab.active { background:rgba(168,85,247,.1); color:var(--purple); border-color:rgba(168,85,247,.4); }
+  .view-tab:hover:not(.active) { background:var(--surface2); color:var(--text); }
+
+  /* Attack Blocked Banner */
+  #attack-blocked-banner {
+    display: none;
+    background: linear-gradient(135deg, rgba(239,68,68,.15), rgba(168,85,247,.15));
+    border: 2px solid var(--red); border-radius: 16px;
+    padding: 20px 28px; margin-bottom: 20px;
+    animation: attackPulse 0.6s ease;
+    position: relative; overflow: hidden;
+  }
+  #attack-blocked-banner.visible { display: flex; align-items: center; gap: 20px; }
+  #attack-blocked-banner::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,.04) 10px, rgba(239,68,68,.04) 20px);
+  }
+  .blocked-icon { font-size: 3rem; flex-shrink: 0; animation: shieldBounce 0.8s ease; }
+  .blocked-title { font-size: 1.3rem; font-weight: 800; color: var(--red); margin-bottom: 4px; }
+  .blocked-sub { color: var(--muted); font-size: .88rem; }
+  .blocked-tags { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .blocked-tag { padding: 4px 12px; border-radius: 20px; font-size: .72rem; font-weight: 700; }
+  .btag-red    { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,.4); }
+  .btag-green  { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,.4); }
+  .btag-purple { background: var(--purple-glow); color: var(--purple); border: 1px solid rgba(168,85,247,.4); }
+  .attacker-sees {
+    margin-left: auto; background: rgba(0,0,0,.4); border: 1px solid rgba(239,68,68,.3);
+    border-radius: 10px; padding: 12px 16px; flex-shrink: 0; max-width: 280px;
+  }
+  .attacker-sees-label { font-size: .68rem; color: var(--red); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .attacker-sees-hex { font-family: var(--mono); font-size: .65rem; color: #6b7280; word-break: break-all; line-height: 1.6; }
+
+  @keyframes attackPulse { 0%{transform:scale(.97);opacity:0} 60%{transform:scale(1.01)} 100%{transform:scale(1);opacity:1} }
+  @keyframes shieldBounce { 0%{transform:rotate(-20deg) scale(.8)} 60%{transform:rotate(5deg) scale(1.15)} 100%{transform:rotate(0) scale(1)} }
+
+  @keyframes flashRed { 0%,100%{box-shadow:0 0 16px rgba(239,68,68,.1)} 50%{box-shadow:0 0 30px rgba(239,68,68,.35)} }
+  @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+  @keyframes ringPulse { 0%{transform:scale(.8);opacity:.5} 100%{transform:scale(2.5);opacity:0} }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  .anim-in { animation: fadeSlideIn .5s ease both; }
+  .spin { display:inline-block; animation: spin 1s linear infinite; }
+  .reset-btn { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--text); padding:6px 14px; border-radius:6px; font-size:.85rem; cursor:pointer; font-weight:600; transition:all 0.2s; margin-right:16px; }
+  .reset-btn:hover { background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-icon">🔐</span>
+    <div>
+      <div>Crypto Engine</div>
+      <div class="logo-sub">Live Security Analysis</div>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center;">
+    <button class="reset-btn" onclick="fetch('/reset',{method:'POST'})">↻ Reset Demo</button>
+    <div id="status-banner" class="waiting">⏳ Waiting for transfer...</div>
+  </div>
+</header>
+
+<!-- Idle state -->
+<div id="idle-overlay">
+  <div style="position:relative;display:flex;align-items:center;justify-content:center;width:120px;height:120px;margin-bottom:32px;">
+    <div class="pulse-ring"></div>
+    <div class="pulse-ring"></div>
+    <div class="pulse-ring"></div>
+    <div class="idle-icon" style="position:relative;z-index:1;">🔐</div>
+  </div>
+  <div class="idle-title">Crypto Engine Ready</div>
+  <div class="idle-sub">Login or send a transfer from Alice's page to see live crypto analysis</div>
+</div>
+
+<div class="page" id="main-page" style="display:none;">
+
+  <!-- View Tabs -->
+  <div class="view-tabs" id="main-tabs" style="display:none;">
+    <button class="view-tab" id="tab-login" onclick="switchView('login')">🔐 Last Login Analysis</button>
+    <button class="view-tab" id="tab-transfer" onclick="switchView('transfer')">💸 Last Transfer Flow</button>
+  </div>
+
+  <div id="login-view" style="display:none;">
+    <!-- Credential Analysis Card (shown on login events) -->
+    <div id="cred-card" class="mod-card">
+    <div class="mod-header">
+      <span class="mod-icon">🔑</span>
+      <div>
+        <div class="mod-title">Credential Interception Analysis</div>
+        <div class="mod-file">crypto_utils.py — SHA-256, PBKDF2, AES-256-GCM</div>
+      </div>
+      <div class="mod-badge" id="cred-badge">IDLE</div>
+    </div>
+    <div class="cred-grid">
+      <!-- LEFT: What was on the wire -->
+      <div>
+        <div class="cred-section-title" id="cred-wire-title">⚠️ What was transmitted on the wire:</div>
+        <div class="data-row">
+          <div class="data-label">Username (always visible)</div>
+          <div class="data-value" id="cred-username">—</div>
+        </div>
+        <div class="data-row">
+          <div class="data-label">Password on the wire</div>
+          <div id="cred-pw-display">—</div>
+        </div>
+        <div class="data-row">
+          <div class="data-label">Full Payload Transmitted</div>
+          <div class="data-value" id="cred-payload">—</div>
+        </div>
+        <div class="data-row">
+          <div class="data-label">AES-256 Ciphertext (what HTTPS sends)</div>
+          <div class="data-value" id="cred-aes-ct">—</div>
+        </div>
+        <div class="data-row">
+          <div class="data-label">HMAC-SHA256 Integrity</div>
+          <div class="data-value" id="cred-hmac">—</div>
+        </div>
+      </div>
+      <!-- RIGHT: Cryptographic password protection -->
+      <div>
+        <div class="cred-section-title safe">🔐 Cryptographic Password Protection:</div>
+        <div class="data-row">
+          <div class="data-label">SHA-256 Hash of Password</div>
+          <div class="data-value highlight" id="cred-sha256">—</div>
+        </div>
+        <div class="data-label" style="margin:8px 0 4px;font-size:.7rem;color:var(--muted);">Why hashing? Even if DB is stolen, attacker gets hash — not the real password.</div>
+        <div class="data-row">
+          <div class="data-label">Salt (random, unique per user)</div>
+          <div class="data-value" id="cred-salt">—</div>
+        </div>
+        <div class="data-row">
+          <div class="data-label">PBKDF2-SHA256 (100,000 iterations)</div>
+          <div class="data-value ok-val" id="cred-pbkdf2">—</div>
+        </div>
+        <div class="data-label" style="margin:8px 0 4px;font-size:.7rem;color:var(--muted);">PBKDF2 with salt makes brute-force attacks 100,000x slower than plain SHA-256.</div>
+        <div class="data-row">
+          <div class="data-label">AES-256 Key used</div>
+          <div class="data-value" id="cred-aes-key">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="result-row" id="cred-result">
+      <span class="result-icon">⏳</span>
+      <span class="result-text">Press Login on Alice's page to see credential analysis…</span>
+    </div>
+  </div>
+
+  <div id="transfer-view" style="display:none;">
+    <!-- Attack Blocked Banner (shown when HTTPS is ON but attack was attempted) -->
+  <div id="attack-blocked-banner">
+    <div class="blocked-icon">🛡️</div>
+    <div style="flex:1;">
+      <div class="blocked-title">⚔️ ATTACK ATTEMPTED — COMPLETELY BLOCKED BY TLS!</div>
+      <div class="blocked-sub">Attacker had <strong>Intercept &amp; Modify</strong> enabled, but TLS encryption stopped the attack at every layer.</div>
+      <div class="blocked-tags">
+        <span class="blocked-tag btag-red">🔺 Amount tampering: FAILED</span>
+        <span class="blocked-tag btag-red">👁️ Payload reading: IMPOSSIBLE</span>
+        <span class="blocked-tag btag-green">🔒 AES-256-GCM: Protected</span>
+        <span class="blocked-tag btag-green">✅ HMAC Integrity: Intact</span>
+        <span class="blocked-tag btag-green">🤝 DH Session Key: Secure</span>
+        <span class="blocked-tag btag-purple">📌 Cert Pinning: Blocked rogue cert</span>
+      </div>
+    </div>
+    <div class="attacker-sees">
+      <div class="attacker-sees-label">🔴 What attacker sees:</div>
+      <div class="attacker-sees-hex" id="blocked-hex">—</div>
+    </div>
+  </div>
+
+  <div id="tx-bar">
+    <div class="tx-chip" id="chip-pkt">
+      <div class="label">Packet #</div>
+      <div class="value" id="v-pkt">—</div>
+    </div>
+    <div class="tx-chip" id="chip-from">
+      <div class="label">From</div>
+      <div class="value" id="v-from">—</div>
+    </div>
+    <div class="tx-chip" id="chip-to">
+      <div class="label">To</div>
+      <div class="value" id="v-to">—</div>
+    </div>
+    <div class="tx-chip" id="chip-orig">
+      <div class="label">Amount Sent</div>
+      <div class="value" id="v-orig">—</div>
+    </div>
+    <div class="tx-chip" id="chip-final">
+      <div class="label">Amount Received</div>
+      <div class="value" id="v-final">—</div>
+    </div>
+    <div class="tx-chip" id="chip-mode">
+      <div class="label">Mode</div>
+      <div class="value" id="v-mode">—</div>
+    </div>
+  </div>
+
+  <!-- Row 1: AES + DH + RSA -->
+  <div class="grid" style="margin-bottom:16px;">
+
+    <!-- AES-GCM Card (crypto_utils.py) -->
+    <div class="mod-card" id="card-aes">
+      <div class="mod-header">
+        <span class="mod-icon">🔑</span>
+        <div>
+          <div class="mod-title">AES-256-GCM Encryption</div>
+          <div class="mod-file">crypto_utils.py</div>
+        </div>
+        <div class="mod-badge" id="badge-aes">IDLE</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Plaintext Payload</div>
+        <div class="data-value" id="aes-plain">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">AES-256 Key (hex)</div>
+        <div class="data-value" id="aes-key">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Nonce / IV (12 bytes)</div>
+        <div class="data-value" id="aes-nonce">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Ciphertext (base64)</div>
+        <div class="data-value" id="aes-ct">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">HMAC-SHA256 Integrity Tag</div>
+        <div class="data-value" id="aes-hmac">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">SHA-256 Hash of Payload</div>
+        <div class="data-value" id="aes-hash">—</div>
+      </div>
+      <div class="result-row" id="aes-result">
+        <span class="result-icon">⏳</span>
+        <span class="result-text">Waiting...</span>
+      </div>
+    </div>
+
+    <!-- DH Key Exchange (dh_key_exchange.py) -->
+    <div class="mod-card" id="card-dh">
+      <div class="mod-header">
+        <span class="mod-icon">🤝</span>
+        <div>
+          <div class="mod-title">Diffie-Hellman Key Exchange</div>
+          <div class="mod-file">dh_key_exchange.py</div>
+        </div>
+        <div class="mod-badge" id="badge-dh">IDLE</div>
+      </div>
+      <div class="dh-flow" id="dh-flow">
+        <div class="dh-party">
+          <div class="dh-party-name alice">👩 Alice</div>
+          <div class="dh-key-box" id="dh-alice-pub">—</div>
+          <div class="data-label" style="margin-top:4px;">Public Key</div>
+        </div>
+        <div class="dh-arrow">⇄</div>
+        <div class="dh-party">
+          <div class="dh-party-name server">🏦 Bank</div>
+          <div class="dh-key-box" id="dh-bank-pub">—</div>
+          <div class="data-label" style="margin-top:4px;">Public Key</div>
+        </div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Shared Secret (computed independently)</div>
+        <div class="data-value" id="dh-secret">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Session Key (HKDF-SHA256 derived)</div>
+        <div class="data-value highlight" id="dh-session">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Secrets Match?</div>
+        <div class="data-value" id="dh-match">—</div>
+      </div>
+      <div class="result-row" id="dh-result">
+        <span class="result-icon">⏳</span>
+        <span class="result-text">Waiting...</span>
+      </div>
+    </div>
+
+    <!-- RSA (rsa_crypto.py) -->
+    <div class="mod-card" id="card-rsa">
+      <div class="mod-header">
+        <span class="mod-icon">🏷️</span>
+        <div>
+          <div class="mod-title">RSA-2048 Digital Signature</div>
+          <div class="mod-file">rsa_crypto.py</div>
+        </div>
+        <div class="mod-badge" id="badge-rsa">IDLE</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Message Signed</div>
+        <div class="data-value" id="rsa-msg">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">RSA Signature (first 64 hex chars)</div>
+        <div class="data-value" id="rsa-sig">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Signature Verification (original)</div>
+        <div class="data-value" id="rsa-verify">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Tampered Message Check</div>
+        <div class="data-value" id="rsa-tamper-msg">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Tampered Signature Valid?</div>
+        <div class="data-value" id="rsa-tamper-valid">—</div>
+      </div>
+      <div class="result-row" id="rsa-result">
+        <span class="result-icon">⏳</span>
+        <span class="result-text">Waiting...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: ECDSA + Cert + Pinning -->
+  <div class="grid" style="margin-bottom:16px;">
+
+    <!-- ECDSA (ecdsa_crypto.py) -->
+    <div class="mod-card" id="card-ecdsa">
+      <div class="mod-header">
+        <span class="mod-icon">📐</span>
+        <div>
+          <div class="mod-title">ECDSA P-256 Signature</div>
+          <div class="mod-file">ecdsa_crypto.py</div>
+        </div>
+        <div class="mod-badge" id="badge-ecdsa">IDLE</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Transaction Message</div>
+        <div class="data-value" id="ecdsa-msg">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">ECDSA Signature (DER, hex)</div>
+        <div class="data-value" id="ecdsa-sig">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Signature Size</div>
+        <div class="data-value" id="ecdsa-size">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Original Verified?</div>
+        <div class="data-value" id="ecdsa-verify">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Tampered Data Verified?</div>
+        <div class="data-value" id="ecdsa-tamper">—</div>
+      </div>
+      <!-- Comparison table -->
+      <div class="data-label" style="margin:12px 0 6px;">ECDSA vs RSA</div>
+      <table class="cmp-table">
+        <tr><th>Algorithm</th><th>Key</th><th>Sig Size</th><th>Security</th></tr>
+        <tr class="highlight-row"><td>ECDSA P-256</td><td>256-bit</td><td id="ecdsa-sig-sz">~72 B</td><td>128-bit</td></tr>
+        <tr><td>RSA-2048</td><td>2048-bit</td><td>256 B</td><td>112-bit</td></tr>
+      </table>
+      <div class="result-row" id="ecdsa-result">
+        <span class="result-icon">⏳</span>
+        <span class="result-text">Waiting...</span>
+      </div>
+    </div>
+
+    <!-- Certificate Info (cert_generator.py) -->
+    <div class="mod-card" id="card-cert">
+      <div class="mod-header">
+        <span class="mod-icon">📜</span>
+        <div>
+          <div class="mod-title">X.509 Certificate</div>
+          <div class="mod-file">cert_generator.py</div>
+        </div>
+        <div class="mod-badge" id="badge-cert">IDLE</div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div class="data-label">Server Certificate</div>
+        <div id="cert-fields">
+          <div class="cert-field"><span class="cert-key">Subject</span><span class="cert-val" id="cert-subject">—</span></div>
+          <div class="cert-field"><span class="cert-key">Issuer (CA)</span><span class="cert-val" id="cert-issuer">—</span></div>
+          <div class="cert-field"><span class="cert-key">Serial No.</span><span class="cert-val" id="cert-serial">—</span></div>
+          <div class="cert-field"><span class="cert-key">Valid From</span><span class="cert-val" id="cert-from">—</span></div>
+          <div class="cert-field"><span class="cert-key">Valid Until</span><span class="cert-val" id="cert-until">—</span></div>
+          <div class="cert-field"><span class="cert-key">Public Key</span><span class="cert-val" id="cert-keytype">—</span></div>
+          <div class="cert-field"><span class="cert-key">Signature Algo</span><span class="cert-val" id="cert-sigalgo">—</span></div>
+          <div class="cert-field"><span class="cert-key">SHA-256 Fingerprint</span><span class="cert-val" id="cert-fp">—</span></div>
+        </div>
+      </div>
+      <div class="result-row" id="cert-result">
+        <span class="result-icon">⏳</span>
+        <span class="result-text">Waiting...</span>
+      </div>
+    </div>
+
+    <!-- Certificate Pinning (cert_pinning.py) -->
+    <div class="mod-card" id="card-pin">
+      <div class="mod-header">
+        <span class="mod-icon">📌</span>
+        <div>
+          <div class="mod-title">Certificate Pinning</div>
+          <div class="mod-file">cert_pinning.py</div>
+        </div>
+        <div class="mod-badge" id="badge-pin">IDLE</div>
+      </div>
+      <div id="pin-bands">
+        <div class="pin-band info">⏳ Waiting for connection data...</div>
+      </div>
+      <div class="data-row" style="margin-top:12px;">
+        <div class="data-label">Pinned Certificate Fingerprint</div>
+        <div class="data-value" id="pin-cert-fp">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Pinned Public Key (SPKI)</div>
+        <div class="data-value" id="pin-key-fp">—</div>
+      </div>
+      <div class="data-row">
+        <div class="data-label">Rogue CA Certificate</div>
+        <div class="data-value" id="pin-rogue">—</div>
+      </div>
+      <div class="result-row" id="pin-result">
+        <span class="result-icon">⏳</span>
+        <span class="result-text">Waiting...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: MITM Integrity Flow (full width) -->
+  <div class="mod-card span-3" id="card-flow" style="grid-column: span 3;">
+    <div class="mod-header">
+      <span class="mod-icon">🌐</span>
+      <div>
+        <div class="mod-title">End-to-End Security Flow — What Actually Happened</div>
+        <div class="mod-file">All modules combined</div>
+      </div>
+      <div class="mod-badge" id="badge-flow">IDLE</div>
+    </div>
+    <div id="mitm-steps" class="mitm-steps">
+      <div class="mitm-step info-step" style="background:var(--blue-dim);border-color:rgba(59,130,246,.3);">
+        <div class="mitm-step-num" style="background:var(--blue-dim);color:var(--blue);">i</div>
+        <div>Send a transfer from Alice's page to see the full security flow here.</div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+const socket = io();
+let firstTransfer = true;
+
+// ── Helper to set data value ──────────────────────────────────────────────────
+function set(id, text, cls='') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'data-value' + (cls ? ' ' + cls : '');
+}
+function setResult(id, icon, text, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<span class="result-icon">${icon}</span><span class="result-text ${cls}">${text}</span>`;
+}
+function setBadge(id, text, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'mod-badge ' + cls;
+}
+function setCard(id, stateCls) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'mod-card ' + stateCls;
+}
+
+// ── Tab Management ────────────────────────────────────────────────────────────
+let hasSeenLogin = false;
+let hasSeenTransfer = false;
+
+function switchView(view) {
+  document.getElementById('login-view').style.display    = (view === 'login') ? 'block' : 'none';
+  document.getElementById('transfer-view').style.display = (view === 'transfer') ? 'block' : 'none';
+  document.getElementById('tab-login').className         = 'view-tab' + (view === 'login' ? ' active' : '');
+  document.getElementById('tab-transfer').className      = 'view-tab' + (view === 'transfer' ? ' active' : '');
+  document.getElementById('main-tabs').style.display     = 'flex';
+}
+
+// ── Show main page ────────────────────────────────────────────────────────────
+function showMainPage() {
+  document.getElementById('idle-overlay').classList.add('hidden');
+  document.getElementById('main-page').style.display = 'block';
+  document.getElementById('tx-bar').classList.add('visible');
+}
+
+// ── All-computing state ───────────────────────────────────────────────────────
+function setAllComputing() {
+  ['aes','dh','rsa','ecdsa','cert','pin','flow'].forEach(m => {
+    setBadge('badge-' + m, '⚙ Computing…', 'computing');
+    setCard('card-' + (m === 'flow' ? 'flow' : m), 'active');
+  });
+}
+
+// ── SocketIO: crypto_update event (main payload) ──────────────────────────────
+socket.on('crypto_update', data => {
+  hasSeenTransfer = true;
+  showMainPage();
+  switchView('transfer');
+  
+  updateStatusBanner(data);
+  updateTxBar(data);
+  setAllComputing();
+
+  // Staggered reveals for wow effect
+  setTimeout(() => populateAES(data),    200);
+  setTimeout(() => populateDH(data),     400);
+  setTimeout(() => populateRSA(data),    600);
+  setTimeout(() => populateECDSA(data),  800);
+  setTimeout(() => populateCert(data),   1000);
+  setTimeout(() => populatePin(data),    1200);
+  setTimeout(() => populateFlow(data),   1500);
+});
+
+// ── status banner ─────────────────────────────────────────────────────────────
+function updateStatusBanner(data) {
+  const b = document.getElementById('status-banner');
+  if (data.mode === 'https' && data.attack_attempted) {
+    b.textContent = '⚔️ ATTACK ATTEMPTED → BLOCKED BY TLS!';
+    b.className = 'secure';
+  } else if (data.mode === 'https') {
+    b.textContent = '🔒 HTTPS — Fully Encrypted & Authenticated';
+    b.className = 'secure';
+  } else if (data.mode === 'attack') {
+    b.textContent = '💀 MITM ATTACK — Transfer Tampered!';
+    b.className = 'attack';
+  } else {
+    b.textContent = '⚠️ HTTP Plaintext — No Encryption';
+    b.className = 'waiting';
+  }
+}
+
+// ── Tx bar ────────────────────────────────────────────────────────────────────
+function updateTxBar(data) {
+  document.getElementById('v-pkt').textContent  = '#' + data.pkt_id;
+  document.getElementById('v-from').textContent = data.sender || '—';
+  document.getElementById('v-to').textContent   = data.recipient || '—';
+  document.getElementById('v-orig').textContent = '₹' + (data.original_amount || data.amount || '—');
+  document.getElementById('v-final').textContent = data.final_amount ? '₹' + data.final_amount : '₹' + (data.original_amount || data.amount || '—');
+  document.getElementById('v-mode').textContent  = data.mode?.toUpperCase() + (data.attack_attempted ? ' (ATTACK BLOCKED)' : '') || '—';
+
+  const fc = document.getElementById('chip-final');
+  fc.className = 'tx-chip ' + (data.tampered ? 'danger' : 'success');
+  const oc = document.getElementById('chip-orig');
+  oc.className = 'tx-chip ' + (data.tampered ? 'warn' : '');
+
+  // Show / hide attack-blocked banner
+  const banner = document.getElementById('attack-blocked-banner');
+  if (data.mode === 'https' && data.attack_attempted) {
+    banner.classList.add('visible');
+    // Show frozen hex from AES section as "what attacker sees"
+    const hexSample = data.aes?.ciphertext_b64 || '(encrypted binary - unreadable)';
+    document.getElementById('blocked-hex').textContent = hexSample.substring(0, 120) + '…';
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+// ── AES module ────────────────────────────────────────────────────────────────
+function populateAES(data) {
+  const aes = data.aes;
+  if (!aes) return;
+  set('aes-plain', aes.plaintext);
+  set('aes-key',   aes.key_hex + '  [256-bit]', 'highlight');
+  set('aes-nonce', aes.nonce_hex + '  [96-bit]');
+  set('aes-ct',    aes.ciphertext_b64);
+  set('aes-hmac',  aes.hmac_hex, 'highlight');
+  set('aes-hash',  aes.sha256_hex);
+
+  if (data.mode === 'https') {
+    setCard('card-aes', 'ok');
+    setBadge('badge-aes', '✓ ENCRYPTED', 'ok');
+    setResult('aes-result', '✅', 'AES-256-GCM encryption active — data is confidential & integrity-protected', 'ok');
+  } else if (data.tampered) {
+    setCard('card-aes', 'fail');
+    setBadge('badge-aes', '✗ EXPOSED', 'fail');
+    setResult('aes-result', '❌', 'NO ENCRYPTION — plaintext intercepted and tampered by MITM!', 'fail');
+  } else {
+    setCard('card-aes', 'fail');
+    setBadge('badge-aes', '✗ PLAINTEXT', 'fail');
+    setResult('aes-result', '⚠️', 'No encryption used — payload is visible to any attacker on the network', 'warn');
+  }
+}
+
+// ── DH module ─────────────────────────────────────────────────────────────────
+function populateDH(data) {
+  const dh = data.dh;
+  if (!dh) return;
+  document.getElementById('dh-alice-pub').textContent = dh.alice_pub_hex;
+  document.getElementById('dh-bank-pub').textContent  = dh.bank_pub_hex;
+  set('dh-secret',  dh.shared_secret_hex);
+  set('dh-session', dh.session_key_hex, 'highlight');
+  set('dh-match',   dh.keys_match ? '✅ YES — both parties derived identical session key' : '❌ NO MATCH!', dh.keys_match ? 'ok-val' : 'fail-val');
+
+  if (data.mode === 'https') {
+    setCard('card-dh','ok'); setBadge('badge-dh','✓ KEY AGREED','ok');
+    setResult('dh-result','✅','Perfect Forward Secrecy — unique session key negotiated via DH','ok');
+  } else {
+    setCard('card-dh','fail'); setBadge('badge-dh','✗ BYPASSED','fail');
+    setResult('dh-result','❌','HTTP skips DH key exchange — attacker can intercept all future sessions','fail');
+  }
+}
+
+// ── RSA module ────────────────────────────────────────────────────────────────
+function populateRSA(data) {
+  const rsa = data.rsa;
+  if (!rsa) return;
+  set('rsa-msg',         rsa.message);
+  set('rsa-sig',         rsa.signature_hex + '…');
+  set('rsa-verify',      rsa.verify_original ? '✅ VALID' : '❌ INVALID', rsa.verify_original ? 'ok-val' : 'fail-val');
+  set('rsa-tamper-msg',  rsa.tampered_message);
+  set('rsa-tamper-valid',rsa.verify_tampered ? '✅ VALID (unexpected!)' : '❌ INVALID — tampering detected!', rsa.verify_tampered ? 'fail-val' : 'ok-val');
+
+  if (data.tampered) {
+    setCard('card-rsa','fail'); setBadge('badge-rsa','✗ TAMPERED','fail');
+    setResult('rsa-result','❌','RSA signature would detect tampering — but on HTTP, server never checked it!','fail');
+  } else {
+    setCard('card-rsa','ok'); setBadge('badge-rsa','✓ SIGNED','ok');
+    setResult('rsa-result','✅','RSA-2048 signature valid — server identity confirmed, message not altered','ok');
+  }
+}
+
+// ── ECDSA module ──────────────────────────────────────────────────────────────
+function populateECDSA(data) {
+  const ec = data.ecdsa;
+  if (!ec) return;
+  set('ecdsa-msg',    ec.message);
+  set('ecdsa-sig',    ec.signature_hex + '…');
+  set('ecdsa-size',   ec.sig_bytes + ' bytes  vs RSA: 256 bytes — ' + Math.round(256/ec.sig_bytes) + 'x smaller');
+  document.getElementById('ecdsa-sig-sz').textContent = ec.sig_bytes + ' B';
+  set('ecdsa-verify', ec.verify_original ? '✅ VALID' : '❌ INVALID', ec.verify_original ? 'ok-val' : 'fail-val');
+  set('ecdsa-tamper', ec.verify_tampered ? '⚠️ VALID (breach!)' : '❌ INVALID — tamper caught!', ec.verify_tampered ? 'fail-val' : 'ok-val');
+
+  if (data.tampered) {
+    setCard('card-ecdsa','fail'); setBadge('badge-ecdsa','✗ TAMPERED','fail');
+    setResult('ecdsa-result','❌','ECDSA detects tampered amount — but HTTP has no ECDSA layer, so nothing stops the MITM','fail');
+  } else {
+    setCard('card-ecdsa','ok'); setBadge('badge-ecdsa','✓ SIGNED','ok');
+    setResult('ecdsa-result','✅','ECDSA P-256: 128-bit security with 8× smaller signatures than RSA','ok');
+  }
+}
+
+// ── Cert module ───────────────────────────────────────────────────────────────
+function populateCert(data) {
+  const c = data.cert;
+  if (!c) return;
+  document.getElementById('cert-subject').textContent  = c.subject;
+  document.getElementById('cert-issuer').textContent   = c.issuer;
+  document.getElementById('cert-serial').textContent   = c.serial;
+  document.getElementById('cert-from').textContent     = c.not_before;
+  document.getElementById('cert-until').textContent    = c.not_after;
+  document.getElementById('cert-keytype').textContent  = c.key_type;
+  document.getElementById('cert-sigalgo').textContent  = c.sig_algo;
+  document.getElementById('cert-fp').textContent       = c.fingerprint;
+
+  if (data.mode === 'https') {
+    setCard('card-cert','ok'); setBadge('badge-cert','✓ TRUSTED','ok');
+    setResult('cert-result','✅','Valid X.509 certificate — server identity verified via PKI trust chain','ok');
+  } else {
+    setCard('card-cert','fail'); setBadge('badge-cert','✗ NOT USED','fail');
+    setResult('cert-result','❌','HTTP ignores certificates — attacker can impersonate the bank with no detection','fail');
+  }
+}
+
+// ── Cert Pinning module ───────────────────────────────────────────────────────
+function populatePin(data) {
+  const p = data.pinning;
+  if (!p) return;
+  set('pin-cert-fp', p.cert_fingerprint);
+  set('pin-key-fp',  p.key_fingerprint);
+  set('pin-rogue',   p.rogue_fingerprint);
+
+  const container = document.getElementById('pin-bands');
+  if (data.mode === 'https') {
+    container.innerHTML = `
+      <div class="pin-band ok">✅ Step 1: Pinned server cert on first connection (TOFU)</div>
+      <div class="pin-band ok">✅ Step 2: Same server cert on reconnect — TRUSTED</div>
+      <div class="pin-band ok">✅ Step 3: Rogue CA cert presented by attacker — BLOCKED (fingerprint mismatch)</div>`;
+    setCard('card-pin','ok'); setBadge('badge-pin','✓ PINNED','ok');
+    setResult('pin-result','✅','Cert pinning blocks rogue CA attack — only your specific key is trusted','ok');
+  } else {
+    container.innerHTML = `
+      <div class="pin-band fail">❌ Step 1: No TLS — certificate pinning requires HTTPS to function</div>
+      <div class="pin-band fail">❌ Step 2: HTTP allows any server — attacker can impersonate bank freely</div>
+      <div class="pin-band fail">❌ Step 3: Rogue cert would be accepted — no pinning, no protection</div>`;
+    setCard('card-pin','fail'); setBadge('badge-pin','✗ NOT USED','fail');
+    setResult('pin-result','❌','Certificate pinning only works over HTTPS — HTTP has zero cert verification','fail');
+  }
+}
+
+// ── Full Flow ─────────────────────────────────────────────────────────────────
+function populateFlow(data) {
+  const el = document.getElementById('mitm-steps');
+  let steps = [];
+
+  if (data.mode === 'https' && data.attack_attempted) {
+    // HIGHLIGHT SCENARIO: attacker tried, TLS blocked everything
+    steps = [
+      ['ok',  '1', `Alice sends ₹${data.original_amount} → AES-256-GCM ENCRYPTS the payload instantly`],
+      ['ok',  '2', `DH Key Exchange: session key established — attacker has no copy of this key`],
+      ['ok',  '3', `RSA-2048 signature: bank identity verified — attacker cannot impersonate`],
+      ['ok',  '4', `ECDSA P-256 signature: additional integrity seal on the transaction`],
+      ['fail','5', `⚔️ ATTACKER activates Intercept Mode — tries to read/modify the transfer`],
+      ['fail','6', `⚔️ ATTACKER sees only ciphertext hex — cannot decode amount, sender, or recipient`],
+      ['fail','7', `⚔️ ATTACKER tries to alter amount — HMAC tag MISMATCH, server rejects the packet`],
+      ['ok',  '8', `Certificate Pinning: attacker's rogue cert fingerprint DOES NOT match pinned key → BLOCKED`],
+      ['ok',  '9', `₹${data.final_amount} arrives at Bank 100% intact — attacker completely shut out ✅`],
+    ];
+    setCard('card-flow', 'ok'); setBadge('badge-flow', '🛡 ATTACK BLOCKED', 'ok');
+  } else if (data.mode === 'https') {
+    steps = [
+      ['ok',  '1', `Alice sends ₹${data.original_amount} → payload encrypted with AES-256-GCM`],
+      ['ok',  '2', `DH Key Exchange: Alice & Bank independently derive identical session key`],
+      ['ok',  '3', `RSA-2048 signature on message — bank authenticated`],
+      ['ok',  '4', `ECDSA P-256 signature also applied — integrity double-locked`],
+      ['ok',  '5', `MITM proxy sees only hex ciphertext — cannot read or modify`],
+      ['ok',  '6', `X.509 certificate verified — not a rogue server`],
+      ['ok',  '7', `Certificate pinning: rogue CA cert BLOCKED`],
+      ['ok',  '8', `₹${data.final_amount} arrives at Bank unmodified ✅`],
+    ];
+    setCard('card-flow','ok'); setBadge('badge-flow','✓ SECURE','ok');
+  } else if (data.tampered) {
+    steps = [
+      ['warn','1', `Alice intends to send ₹${data.original_amount} → transmitted in PLAINTEXT`],
+      ['fail','2', `No DH exchange — no session key — attacker sees everything`],
+      ['fail','3', `No RSA signature check — server cannot verify message integrity`],
+      ['fail','4', `No ECDSA signature — attacker free to modify payload`],
+      ['fail','5', `MITM proxy intercepts POST body, changes amount=${data.original_amount} → ${data.final_amount}`],
+      ['fail','6', `No certificate check — attacker could be impersonating the bank`],
+      ['fail','7', `No certificate pinning — rogue CA cert would be accepted`],
+      ['fail','8', `Bank receives ₹${data.final_amount} — Alice pays ${Math.round(data.final_amount/data.original_amount)}× more! ❌`],
+    ];
+    setCard('card-flow','fail'); setBadge('badge-flow','✗ ATTACKED','fail');
+  } else {
+    steps = [
+      ['warn','1', `Alice sends ₹${data.original_amount} → transmitted in PLAINTEXT (no AES)`],
+      ['fail','2', `No DH exchange — session key never established`],
+      ['fail','3', `No RSA signature — no authentication of bank identity`],
+      ['fail','4', `No ECDSA signature — no integrity guarantee`],
+      ['ok',  '5', `MITM proxy present but not active — data forwarded unmodified`],
+      ['fail','6', `No certificate verification — server not authenticated`],
+      ['fail','7', `No certificate pinning — rogue CA attack possible`],
+      ['ok',  '8', `₹${data.final_amount} arrives correctly — but only because MITM chose not to attack`],
+    ];
+    setCard('card-flow',''); setBadge('badge-flow','⚠ VULNERABLE','');
+  }
+
+  el.innerHTML = steps.map(([t, n, txt]) => `
+    <div class="mitm-step ${t}-step">
+      <div class="mitm-step-num">${n}</div>
+      <div>${txt}</div>
+    </div>`).join('');
+}
+
+socket.on('reset_all', () => location.reload());
+
+// ── Login Credential Analysis ────────────────────────────────────────────
+
+socket.on('login_crypto_update', data => {
+  hasSeenLogin = true;
+  showMainPage();
+  switchView('login');
+  
+  const cred = data.credential;
+  if (!cred) return;
+
+  const card = document.getElementById('cred-card');
+  card.classList.add('visible');
+  // Scroll card into view
+  card.scrollIntoView({behavior: 'smooth', block: 'start'});
+
+  // Wire title
+  const wireTitle = document.getElementById('cred-wire-title');
+  wireTitle.className = 'cred-section-title ' + (cred.password_exposed ? 'danger' : 'safe');
+  wireTitle.textContent = cred.password_exposed
+    ? '🚨 What was transmitted ON THE WIRE (exposed!)'
+    : '✅ What was transmitted on the wire (encrypted):';
+
+  // Badge
+  setBadge('cred-badge',
+    cred.password_exposed ? '✖ EXPOSED' : '✓ ENCRYPTED',
+    cred.password_exposed ? 'fail' : 'ok');
+  // Card state — set directly to preserve 'visible' class correctly
+  card.className = 'mod-card visible ' + (cred.password_exposed ? 'fail' : 'ok');
+
+  // Username
+  set('cred-username', cred.username);
+
+  // Password display — the dramatic part
+  const pwDisplay = document.getElementById('cred-pw-display');
+  if (cred.password_exposed) {
+    pwDisplay.innerHTML = `<div class="pw-exposed">${cred.password_plain}
+      <span style="font-size:.65rem;letter-spacing:0;margin-left:8px;opacity:.8">← VISIBLE TO ATTACKER</span></div>`;
+  } else {
+    pwDisplay.innerHTML = `<div class="pw-protected">🔒 ${cred.password_plain}</div>`;
+  }
+
+  set('cred-payload',  cred.payload);
+  set('cred-aes-ct',   cred.ciphertext, 'highlight');
+  set('cred-hmac',     cred.hmac);
+  set('cred-sha256',   cred.sha256, 'highlight');
+  set('cred-salt',     cred.salt);
+  set('cred-pbkdf2',   cred.pbkdf2, 'ok-val');
+  set('cred-aes-key',  cred.aes_key);
+
+  // Result
+  const resultEl = document.getElementById('cred-result');
+  if (cred.password_exposed) {
+    resultEl.innerHTML = `<span class="result-icon">❌</span>
+      <span class="result-text fail">HTTP: Password transmitted in PLAINTEXT —
+      attacker captured credentials instantly! HTTPS + PBKDF2 would have prevented this.</span>`;
+  } else {
+    resultEl.innerHTML = `<span class="result-icon">✅</span>
+      <span class="result-text ok">HTTPS: AES-256-GCM encrypted credentials —
+      attacker sees only ciphertext. PBKDF2 ensures server stores secure hash, not plaintext.</span>`;
+  }
+
+  // Also update status banner for login context
+  const b = document.getElementById('status-banner');
+  if (data.attack_attempted && data.mode === 'https') {
+    b.textContent = '⚔️ LOGIN ATTACK BLOCKED — Credentials Protected!';
+    b.className = 'secure';
+  } else if (cred.password_exposed) {
+    b.textContent = '💥 CREDENTIALS STOLEN via HTTP Login!';
+    b.className = 'attack';
+  } else {
+    b.textContent = '🔒 Login Credentials Encrypted by HTTPS';
+    b.className = 'secure';
+  }
+});
+
+socket.on('mode_change', d => {
+  const b = document.getElementById('status-banner');
+  if (d.https_mode) { b.textContent = '🔒 HTTPS Mode'; b.className = 'secure'; }
+  else if (d.attack_active) { b.textContent = '💀 MITM Attack Active'; b.className = 'attack'; }
+  else { b.textContent = '⏳ HTTP Mode — Waiting for transfer...'; b.className = 'waiting'; }
+});
+</script>
+</body>
+</html>
