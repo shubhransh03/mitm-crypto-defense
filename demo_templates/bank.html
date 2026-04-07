@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🟢 National Bank — Server Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg: #030d06; --surface: #0a1a10; --surface2: #0f2016; --border: #1a3d25;
+    --green: #22c55e; --green2: #16a34a; --red: #ef4444;
+    --yellow: #fbbf24; --blue: #3b82f6; --muted: #6b7280; --text: #e5e7eb;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #052e16, #064e3b);
+    padding: 18px 28px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom: 1px solid #065f46; box-shadow: 0 4px 20px rgba(34,197,94,.15);
+  }
+  .logo { font-size:1.3rem; font-weight:700; color:var(--green); display:flex; align-items:center; gap:10px; }
+  .server-badge {
+    display:flex; align-items:center; gap:8px; font-size:.8rem; color:var(--green);
+    background:rgba(34,197,94,.1); padding:6px 14px; border-radius:20px;
+    border:1px solid rgba(34,197,94,.25);
+  }
+  .live-dot { width:8px; height:8px; background:var(--green); border-radius:50%;
+    animation: livepulse 1.5s infinite; }
+  @keyframes livepulse { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.4)} 50%{box-shadow:0 0 0 6px rgba(34,197,94,0)} }
+
+  /* ── Balance Cards ── */
+  .balance-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; padding:24px 28px; }
+  .balance-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:20px; position:relative; overflow:hidden;
+  }
+  .balance-card::before { content:''; position:absolute; top:-30%; right:-10%;
+    width:120px; height:120px; background:rgba(34,197,94,.04); border-radius:50%; }
+  .bc-label { font-size:.72rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+  .bc-avatar { width:38px; height:38px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-size:1.2rem; margin:10px 0 8px;
+    background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.2); }
+  .bc-name { font-size:.9rem; color:var(--text); font-weight:600; }
+  .bc-amount { font-size:1.8rem; font-weight:700; color:var(--green); margin-top:4px;
+    transition:all .3s; font-family:var(--mono); }
+  .bc-amount.flash { animation: balFlash .6s ease; }
+  @keyframes balFlash { 0%,100%{color:var(--green)} 50%{color:#86efac} }
+  .bc-amount.danger { color:var(--red); }
+
+  /* Stat card */
+  .stat-card { text-align:center; }
+  .stat-num { font-size:2rem; font-weight:700; font-family:var(--mono); color:var(--green); }
+  .stat-label { font-size:.78rem; color:var(--muted); margin-top:4px; }
+
+  /* ── Transaction Feed ── */
+  .feed-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 28px; background:var(--surface); border-top:1px solid var(--border);
+    border-bottom:1px solid var(--border);
+  }
+  .feed-title { font-size:.85rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+
+  #legend { display:flex; gap:16px; font-size:.76rem; color:var(--muted); align-items:center; }
+  .leg { display:flex; align-items:center; gap:5px; }
+  .leg-dot { width:8px; height:8px; border-radius:50%; }
+  .leg-dot.clean { background:var(--green); }
+  .leg-dot.tampered { background:var(--red); }
+  .leg-dot.https { background:var(--blue); }
+
+  #tx-feed { padding:0 28px 28px; }
+
+  .tx-row {
+    display:grid; grid-template-columns:60px 100px 1fr 1fr 140px 110px;
+    align-items:center; gap:12px; padding:14px 16px; border-radius:12px;
+    margin-top:10px; font-size:.86rem; border-left:4px solid;
+    animation: rowIn .35s ease;
+  }
+  @keyframes rowIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:none} }
+  .tx-row.clean    { background:rgba(34,197,94,.06);  border-color:var(--green);  }
+  .tx-row.tampered { background:rgba(239,68,68,.07);  border-color:var(--red);    }
+  .tx-row.https    { background:rgba(59,130,246,.06); border-color:var(--blue);   }
+
+  .tx-id { font-family:var(--mono); font-size:.78rem; color:var(--muted); }
+  .tx-time { font-family:var(--mono); font-size:.78rem; color:var(--muted); }
+  .tx-from, .tx-to { font-weight:600; }
+  .tx-amount { font-family:var(--mono); font-weight:700; font-size:1rem; }
+  .tx-row.clean    .tx-amount { color:var(--green); }
+  .tx-row.tampered .tx-amount { color:var(--red);   }
+  .tx-row.https    .tx-amount { color:var(--blue);  }
+  .tx-status {
+    padding: 4px 12px; border-radius:20px; font-size:.72rem; font-weight:700;
+    text-align:center; letter-spacing:.4px;
+  }
+  .tx-row.clean    .tx-status { background:rgba(34,197,94,.1); color:var(--green); }
+  .tx-row.tampered .tx-status { background:rgba(239,68,68,.1); color:var(--red);   }
+  .tx-row.https    .tx-status { background:rgba(59,130,246,.1);color:var(--blue);  }
+
+  /* Table header */
+  .tx-header {
+    display:grid; grid-template-columns:60px 100px 1fr 1fr 140px 110px;
+    gap:12px; padding:8px 16px; font-size:.72rem; text-transform:uppercase;
+    letter-spacing:1px; color:var(--muted); border-bottom:1px solid var(--border);
+    margin-top:12px;
+  }
+
+  .alert-banner {
+    margin:16px 28px 0; padding:14px 18px; border-radius:12px;
+    font-size:.88rem; font-weight:600; display:flex; align-items:center; gap:10px;
+    animation: rowIn .35s ease;
+  }
+  .alert-banner.warn { background:rgba(239,68,68,.1); color:var(--red); border:1px solid rgba(239,68,68,.2); }
+
+  #empty-state { text-align:center; padding:50px 0; color:var(--muted); font-size:.9rem; }
+
+  .reset-btn { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--text); padding:6px 12px; border-radius:6px; font-size:.8rem; cursor:pointer; font-weight:600; transition:all 0.2s; }
+  .reset-btn:hover { background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🏛 National Bank — Server Dashboard</div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <button class="reset-btn" onclick="fetch('/reset',{method:'POST'})">↻ Reset Demo</button>
+    <div class="server-badge"><div class="live-dot"></div>LIVE</div>
+  </div>
+</header>
+
+<div class="balance-grid">
+  <div class="balance-card">
+    <div class="bc-label">Account Holder</div>
+    <div class="bc-avatar">👩</div>
+    <div class="bc-name">Alice Johnson</div>
+    <div class="bc-amount" id="bal-alice">₹5,000</div>
+  </div>
+  <div class="balance-card">
+    <div class="bc-label">Account Holder</div>
+    <div class="bc-avatar">👨</div>
+    <div class="bc-name">Bob Smith</div>
+    <div class="bc-amount" id="bal-bob">₹3,000</div>
+  </div>
+  <div class="balance-card stat-card">
+    <div class="bc-label">Transactions</div>
+    <div class="stat-num" id="tx-count">0</div>
+    <div class="stat-label">Total received</div>
+    <div class="stat-num" style="font-size:1.2rem;margin-top:16px" id="tampered-count">0</div>
+    <div class="stat-label" style="color:#ef4444">⚠️ Tampered</div>
+  </div>
+  <div class="balance-card stat-card">
+    <div class="bc-label">Logins</div>
+    <div class="stat-num" id="login-count">0</div>
+    <div class="stat-label">Total attempts</div>
+  </div>
+</div>
+
+<div class="feed-header">
+  <span class="feed-title">📥 Incoming Transactions</span>
+  <div id="legend">
+    <div class="leg"><div class="leg-dot clean"></div>Clean</div>
+    <div class="leg"><div class="leg-dot tampered"></div>Tampered</div>
+    <div class="leg"><div class="leg-dot https"></div>HTTPS</div>
+  </div>
+</div>
+
+<div id="tx-feed">
+  <div class="tx-header">
+    <span>#</span><span>Time</span><span>From</span><span>To</span><span>Amount Received</span><span>Status</span>
+  </div>
+  <div id="empty-state">No transactions yet. Ask Alice to send money 👆</div>
+</div>
+
+<script>
+const socket = io();
+let txCount = 0, tamperedCount = 0, loginCount = 0;
+
+function flash(elId) {
+  const el = document.getElementById(elId);
+  el.classList.remove('flash'); void el.offsetWidth;
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 600);
+}
+
+socket.on('bank_update', data => {
+  const tx = data.transaction;
+  const balances = data.balances;
+
+  // Update balances
+  document.getElementById('bal-alice').textContent = '₹' + balances['Alice'].toLocaleString();
+  document.getElementById('bal-bob').textContent   = '₹' + balances['Bob'].toLocaleString();
+  flash('bal-alice'); flash('bal-bob');
+
+  // Update counters
+  txCount++;
+  document.getElementById('tx-count').textContent = txCount;
+  if (tx.tampered) {
+    tamperedCount++;
+    document.getElementById('tampered-count').textContent = tamperedCount;
+  }
+
+  // Remove empty state
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  // Add tamper alert banner
+  if (tx.tampered) {
+    const banner = document.createElement('div');
+    banner.className = 'alert-banner warn';
+    banner.innerHTML = `⚠️ ALERT — Suspicious transaction #${tx.id}: unusually large amount. Data may have been tampered in transit!`;
+    document.getElementById('tx-feed').insertBefore(banner, document.querySelector('.tx-header').nextSibling);
+    setTimeout(() => banner.remove(), 5000);
+  }
+
+  // Determine class
+  let rowClass = 'clean', statusText = '✅ CLEAN', modeStr = tx.mode;
+  if (tx.tampered) { rowClass = 'tampered'; statusText = '⚠️ TAMPERED'; }
+  else if (tx.mode === 'HTTPS') { rowClass = 'https'; statusText = '🔒 HTTPS'; }
+
+  const row = document.createElement('div');
+  row.className = `tx-row ${rowClass}`;
+  row.innerHTML = `
+    <span class="tx-id">#${tx.id}</span>
+    <span class="tx-time">${tx.time}</span>
+    <span class="tx-from">👤 ${tx.sender}</span>
+    <span class="tx-to">👤 ${tx.recipient}</span>
+    <span class="tx-amount">₹${tx.amount.toLocaleString()}</span>
+    <span class="tx-status">${statusText}</span>`;
+
+  const header = document.querySelector('.tx-header');
+  header.parentNode.insertBefore(row, header.nextSibling);
+});
+
+socket.on('bank_login', tx => {
+  loginCount++;
+  document.getElementById('login-count').textContent = loginCount;
+
+  // Remove empty state
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  // Determine class
+  let rowClass = 'clean', statusText = '✅ SECURE';
+  if (tx.mode === 'HTTP') {
+      rowClass = 'tampered';
+      statusText = tx.attack_active ? '🚨 STOLEN' : '⚠️ EXPOSED';
+  } else {
+      rowClass = 'https';
+      statusText = '🔒 SECURE (HTTPS)';
+  }
+
+  const row = document.createElement('div');
+  row.className = `tx-row ${rowClass}`;
+  row.innerHTML = `
+    <span class="tx-id">#${tx.id}</span>
+    <span class="tx-time">${tx.time}</span>
+    <span class="tx-from">👤 ${tx.username}</span>
+    <span class="tx-to">🏦 Server</span>
+    <span class="tx-amount" style="font-size:.9rem;">🔐 Login</span>
+    <span class="tx-status">${statusText}</span>`;
+
+  const header = document.querySelector('.tx-header');
+  header.parentNode.insertBefore(row, header.nextSibling);
+});
+
+socket.on('reset_all', () => location.reload());
+
+// Load initial state
+fetch('/state').then(r=>r.json()).then(s => {
+  if (s.balances) {
+    document.getElementById('bal-alice').textContent = '₹' + s.balances['Alice'].toLocaleString();
+    document.getElementById('bal-bob').textContent   = '₹' + s.balances['Bob'].toLocaleString();
+  }
+});
+</script>
+</body>
+</html>
