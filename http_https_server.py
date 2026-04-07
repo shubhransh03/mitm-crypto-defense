@@ -246,8 +246,9 @@ def start_https_server(host='127.0.0.1', port=8443):
     # Create HTTPS server
     server = HTTPServer((host, port), HTTPSRequestHandler)
 
-    # Set up SSL/TLS
-    context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+    # Set up SSL/TLS (modern, Python 3.12+ compatible)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(
         certfile='certs/server_cert.pem',
         keyfile='certs/server_key.pem'
