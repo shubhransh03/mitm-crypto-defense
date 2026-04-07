@@ -14,12 +14,16 @@ scapy>=2.5.0
 requests>=2.31.0
 urllib3>=2.1.0
 
-# GUI and visualization
-Pillow>=10.1.0
-matplotlib>=3.8.0
+# Flask web app (bank_app - realistic MITM target)
+flask>=3.0.0
+flask-socketio>=5.3.0
 
-# Terminal utilities
-colorama>=0.4.6
+# GUI and visualization (unused in browser demo)
+# Pillow>=10.1.0
+# matplotlib>=3.8.0
+
+# Terminal utilities (unused in browser demo)
+# colorama>=0.4.6
 
 # Development/Testing (optional)
 pytest>=7.4.0
