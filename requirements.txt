@@ -1,0 +1,28 @@
+# requirements.txt
+# Man-in-the-Middle (MITM) Attack Simulator Dependencies
+# Python 3.8+
+
+# Core cryptography libraries
+cryptography>=41.0.0
+pycryptodome>=3.19.0
+pyOpenSSL>=23.3.0
+
+# Network packet analysis
+scapy>=2.5.0
+
+# HTTP client/server
+requests>=2.31.0
+urllib3>=2.1.0
+
+# GUI and visualization
+Pillow>=10.1.0
+matplotlib>=3.8.0
+
+# Terminal utilities
+colorama>=0.4.6
+
+# Development/Testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.12.0
+flake8>=6.1.0
