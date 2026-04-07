@@ -59,9 +59,11 @@ MITM-Attack-Simulator/
 ├── README.md                          # This file
 ├── MITM_Project_Guide.md              # Comprehensive project guide
 ├── QUICK_START_GUIDE.md               # Quick start instructions
+├── ARCHITECTURE.md                    # System architecture diagrams
+├── PROJECT_SUMMARY.md                 # Project deliverables summary
 ├── requirements.txt                   # Python dependencies
 │
-├── certs/                             # Digital certificates
+├── certs/                             # Digital certificates (auto-generated)
 │   ├── ca_cert.pem                   # Certificate Authority
 │   ├── ca_key.pem                    # CA private key
 │   ├── server_cert.pem               # Server certificate
@@ -69,24 +71,27 @@ MITM-Attack-Simulator/
 │   ├── client_cert.pem               # Client certificate
 │   └── client_key.pem                # Client private key
 │
-├── src/                               # Core implementation
-│   ├── cert_generator.py             # Generate X.509 certificates
-│   ├── crypto_utils.py               # AES-GCM, HMAC, hashing
-│   ├── dh_key_exchange.py            # Diffie-Hellman implementation
-│   ├── rsa_crypto.py                 # RSA encryption & signatures
-│   ├── http_https_server.py          # HTTP & HTTPS servers
-│   ├── http_https_client.py          # HTTP & HTTPS clients
-│   └── network_sniffer.py            # Packet sniffing tool
-│
-├── examples/                          # Demonstration scripts
-│   ├── interactive_demo.py           # Interactive menu-driven demo
-│   └── [individual crypto demos]
+├── bank_app/                          # Flask mock bank — realistic MITM target
+│   ├── __init__.py                   # Flask app factory
+│   ├── config.py                     # Flask configuration
+│   ├── models.py                     # User/balance data (PBKDF2 hashing)
+│   ├── routes.py                     # Login, register, transfer endpoints
+│   └── templates/                    # HTML templates
+│       ├── base.html
+│       └── index.html
 │
 ├── logs/                              # Captured data logs
 │   └── captured_credentials_http.log # Intercepted credentials
 │
-└── tests/                             # Unit tests (optional)
-    └── test_*.py
+├── cert_generator.py                  # Generate X.509 certificate chain
+├── crypto_utils.py                    # AES-GCM, HMAC, SHA-256, PBKDF2
+├── dh_key_exchange.py                 # Diffie-Hellman key exchange
+├── rsa_crypto.py                      # RSA encryption & digital signatures
+├── http_https_server.py               # Vulnerable HTTP + Secure HTTPS servers
+├── http_https_client.py               # HTTP + HTTPS clients
+├── network_sniffer.py                 # Passive packet sniffer (Scapy)
+├── mitm_proxy.py                      # Active MITM TCP proxy (modifies traffic!)
+└── interactive_demo.py                # Interactive menu-driven demo [11 demos]
 ```
 
 ---
@@ -442,8 +447,11 @@ python src/cert_generator.py
 - [x] RSA encryption & signatures
 - [x] HTTP server (vulnerable)
 - [x] HTTPS server (secure)
-- [x] Network sniffer
-- [x] Interactive demo
+- [x] Network sniffer (passive packet capture)
+- [x] Active MITM proxy (traffic tampering)
+- [x] Flask mock bank app (realistic attack target)
+- [x] PBKDF2 password hashing in bank app
+- [x] Interactive demo (11 demonstrations)
 - [x] Comprehensive documentation
 - [x] Quick start guide
 
