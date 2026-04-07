@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if username %}
+    <p>Logged in as <b>{{ username }}</b>. Current balance: <b>{{ balance }}</b> credits.</p>
+
+    <h3 class="section-title">Transfer Money</h3>
+    <form method="post" action="{{ url_for('main.transfer') }}">
+      <label>To username:</label>
+      <input type="text" name="to_user" required>
+      <label>Amount:</label>
+      <input type="number" name="amount" min="1" required>
+      <button type="submit">Transfer</button>
+    </form>
+
+    <h3 class="section-title">Change Password</h3>
+    <form method="post" action="{{ url_for('main.change_password') }}">
+      <label>Old password:</label>
+      <input type="password" name="old_password" required>
+      <label>New password:</label>
+      <input type="password" name="new_password" required>
+      <button type="submit">Change Password</button>
+    </form>
+
+    <form method="post" action="{{ url_for('main.logout') }}">
+      <button type="submit">Logout</button>
+    </form>
+  {% else %}
+    <h3>Register</h3>
+    <form method="post" action="{{ url_for('main.register') }}">
+      <label>Username:</label>
+      <input type="text" name="username" required>
+      <label>Password:</label>
+      <input type="password" name="password" required>
+      <button type="submit">Register</button>
+    </form>
+
+    <h3>Login</h3>
+    <form method="post" action="{{ url_for('main.login') }}">
+      <label>Username:</label>
+      <input type="text" name="username" required>
+      <label>Password:</label>
+      <input type="password" name="password" required>
+      <button type="submit">Login</button>
+    </form>
+
+    <p>Demo users (initially): <code>alice / alice123</code>, <code>bob / bob123</code></p>
+  {% endif %}
+{% endblock %}
