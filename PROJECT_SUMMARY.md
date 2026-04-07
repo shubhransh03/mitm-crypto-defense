@@ -248,23 +248,29 @@ Lists all Python dependencies with versions:
 
 | File | Type | Lines | Purpose |
 |------|------|-------|---------|
-| cert_generator.py | Python | 280 | Generate X.509 certificates |
-| crypto_utils.py | Python | 350 | AES-GCM, HMAC, hashing |
-| dh_key_exchange.py | Python | 320 | Diffie-Hellman implementation |
-| rsa_crypto.py | Python | 280 | RSA encryption & signatures |
-| http_https_server.py | Python | 400 | HTTP/HTTPS servers |
-| http_https_client.py | Python | 320 | HTTP/HTTPS clients |
-| network_sniffer.py | Python | 250 | Packet capture & analysis |
-| interactive_demo.py | Python | 400 | Interactive demonstrations |
-| requirements.txt | Config | 25 | Python dependencies |
-| README.md | Doc | 300+ | Main documentation |
-| MITM_Project_Guide.md | Doc | 600+ | Comprehensive guide |
-| QUICK_START_GUIDE.md | Doc | 400+ | Quick start tutorial |
+| cert_generator.py | Python | 232 | Generate X.509 certificate chain |
+| crypto_utils.py | Python | 237 | AES-GCM, HMAC, SHA-256, PBKDF2 |
+| dh_key_exchange.py | Python | 258 | Diffie-Hellman key exchange |
+| rsa_crypto.py | Python | 247 | RSA encryption & digital signatures |
+| http_https_server.py | Python | 286 | Vulnerable HTTP + Secure HTTPS servers |
+| http_https_client.py | Python | 269 | HTTP + HTTPS clients |
+| network_sniffer.py | Python | 165 | Passive packet capture & analysis |
+| mitm_proxy.py | Python | 207 | **Active MITM TCP proxy (modify traffic)** |
+| interactive_demo.py | Python | 335 | Interactive demo menu (11 demos) |
+| bank_app/__init__.py | Python | 18 | Flask app factory |
+| bank_app/config.py | Python | 6 | Flask config (PBKDF2 secret key) |
+| bank_app/models.py | Python | 90 | User/balance data with PBKDF2 hashing |
+| bank_app/routes.py | Python | 104 | Login, register, transfer endpoints |
+| requirements.txt | Config | 32 | Python dependencies (incl. Flask) |
+| README.md | Doc | 540 | Main documentation |
+| MITM_Project_Guide.md | Doc | 728 | Comprehensive guide |
+| QUICK_START_GUIDE.md | Doc | 500+ | Quick start tutorial + new demos |
+| ARCHITECTURE.md | Doc | 434 | System architecture diagrams |
 | PROJECT_SUMMARY.md | Doc | This | Summary (you are here) |
 
-**Total Code**: ~2,700 lines of Python  
-**Total Documentation**: ~1,300 lines  
-**Total Project**: ~4,000 lines
+**Total Python Code**: ~2,982 lines  
+**Total Documentation**: ~2,200 lines  
+**Total Project**: ~5,180 lines
 
 ---
 
