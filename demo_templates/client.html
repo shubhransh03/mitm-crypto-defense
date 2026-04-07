@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureBank — Alice's Account</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:    #0d1117;  --surface: #161b22;  --border: #30363d;
+    --blue:  #3b82f6;  --blue2:   #1d4ed8;
+    --text:  #e6edf3;  --muted:   #8b949e;
+    --green: #22c55e;  --red: #ef4444;
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #1e40af);
+    padding: 18px 28px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid #2563eb; box-shadow: 0 4px 20px rgba(59,130,246,.3);
+  }
+  .logo { font-size: 1.4rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .logo svg { width:32px; height:32px; filter: drop-shadow(0 0 8px #3b82f6); }
+
+  #mode-badge {
+    padding: 6px 14px; border-radius: 20px; font-size: .8rem; font-weight: 600;
+    background: rgba(34,197,94,.15); color: var(--green); border: 1px solid rgba(34,197,94,.3);
+    transition: all .4s;
+  }
+  #mode-badge.unsafe { background: rgba(239,68,68,.15); color: var(--red); border-color: rgba(239,68,68,.3); }
+
+  /* ── Main Layout ── */
+  main { max-width: 520px; margin: 40px auto; padding: 0 20px; }
+
+  /* ── Balance Card ── */
+  .balance-card {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    border-radius: 20px; padding: 32px; text-align: center; margin-bottom: 28px;
+    box-shadow: 0 8px 32px rgba(59,130,246,.2); border: 1px solid rgba(96,165,250,.2);
+    position: relative; overflow: hidden;
+  }
+  .balance-card::before {
+    content:''; position:absolute; top:-50%; right:-20%;
+    width:200px; height:200px; background: rgba(96,165,250,.08); border-radius:50%;
+  }
+  .balance-label { font-size:.85rem; color: rgba(255,255,255,.6); letter-spacing:1px; text-transform:uppercase; }
+  .balance-amount { font-size: 3rem; font-weight: 700; color:#fff; margin: 10px 0 4px; letter-spacing:-1px; }
+  .balance-user { font-size:.9rem; color: rgba(255,255,255,.7); }
+  .avatar { width:52px; height:52px; border-radius:50%; background:#3b82f6;
+    display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+    margin: 0 auto 12px; border: 3px solid rgba(255,255,255,.3); }
+
+  /* ── Transfer Form ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 28px; margin-bottom: 20px;
+  }
+  .card h3 { font-size:1rem; font-weight:600; margin-bottom:20px; color:var(--text); }
+  .form-group { margin-bottom: 18px; }
+  .form-group label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:7px; font-weight:500; }
+  .form-group select, .form-group input {
+    width:100%; padding: 12px 16px; background:#0d1117; border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size:.95rem; font-family: inherit;
+    transition: border-color .2s;
+  }
+  .form-group select:focus, .form-group input:focus { outline:none; border-color:var(--blue); }
+
+  .send-btn {
+    width:100%; padding: 14px; background: linear-gradient(135deg, var(--blue), var(--blue2));
+    color:#fff; font-size:1rem; font-weight:600; border:none; border-radius:12px;
+    cursor:pointer; transition: all .2s; letter-spacing:.3px;
+    box-shadow: 0 4px 15px rgba(59,130,246,.3);
+  }
+  .send-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(59,130,246,.45); }
+  .send-btn:active { transform: translateY(0); }
+  .send-btn:disabled { background: #374151; cursor:not-allowed; box-shadow:none; transform:none; }
+
+  /* ── Status / Transaction Log ── */
+  #status { min-height:52px; display:flex; align-items:center; justify-content:center; }
+  .tx-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-radius: 10px; margin-bottom:8px; font-size:.88rem;
+    background: rgba(34,197,94,.08); border-left: 3px solid var(--green); animation: fadeIn .4s ease;
+  }
+  .tx-item.tampered { background: rgba(239,68,68,.08); border-left-color: var(--red); }
+  .tx-item .amount { font-weight:700; }
+  .tx-item.tampered .amount { color:var(--red); }
+
+  /* ── Packet animation ── */
+  .sending {
+    display:flex; align-items:center; gap:10px; color:var(--blue); font-size:.9rem;
+  }
+  .dot-pulse { display:flex; gap:4px; }
+  .dot-pulse span { width:7px; height:7px; background:var(--blue); border-radius:50%;
+    animation: pulse 1s infinite; }
+  .dot-pulse span:nth-child(2) { animation-delay:.15s; }
+  .dot-pulse span:nth-child(3) { animation-delay:.3s; }
+
+  .alert { padding:12px 16px; border-radius:10px; font-size:.88rem; font-weight:500; }
+  .alert-success { background:rgba(34,197,94,.1); color:var(--green); border:1px solid rgba(34,197,94,.2); }
+  .alert-danger  { background:rgba(239,68,68,.1);  color:var(--red);   border:1px solid rgba(239,68,68,.2);  }
+  .alert-warn    { background:rgba(251,191,36,.1);  color:#fbbf24;      border:1px solid rgba(251,191,36,.2); }
+
+  @keyframes pulse { 0%,100% { transform:scale(.8); opacity:.5; } 50% { transform:scale(1.2); opacity:1; } }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+
+  /* ── Footer bar ── */
+  .footer-bar {
+    position:fixed; bottom:0; left:0; right:0;
+    background:var(--surface); border-top:1px solid var(--border);
+    padding:10px 24px; display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size:.8rem; color:var(--muted);
+  }
+  .lock-icon { font-size:1rem; }
+
+  /* ── Tabs ── */
+  .tab-bar { display:flex; gap:0; margin-bottom:20px; border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+  .tab-btn { flex:1; padding:12px; background:var(--surface); border:none; color:var(--muted);
+    font-size:.9rem; font-weight:600; cursor:pointer; transition:all .2s; font-family:inherit; }
+  .tab-btn.active { background:var(--blue); color:#fff; }
+  .tab-btn:hover:not(.active) { background:rgba(59,130,246,.1); color:var(--text); }
+
+  /* ── Credential result ── */
+  .cred-stolen { font-size:1.2rem; font-weight:800; letter-spacing:1px; }
+
+  .reset-btn { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--text); padding:6px 12px; border-radius:6px; font-size:.8rem; cursor:pointer; font-weight:600; transition:all 0.2s; }
+  .reset-btn:hover { background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2">
+      <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/>
+      <circle cx="12" cy="13" r="1.5" fill="#60a5fa"/>
+    </svg>
+    SecureBank
+  </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <button class="reset-btn" onclick="fetch('/reset',{method:'POST'})">↻ Reset Demo</button>
+    <div id="mode-badge">🔒 HTTP MODE</div>
+  </div>
+</header>
+
+<main>
+  <div class="balance-card">
+    <div class="avatar">👩</div>
+    <div class="balance-label">Account Balance</div>
+    <div class="balance-amount" id="balance">₹5,000</div>
+    <div class="balance-user">Alice Johnson • ACC-0042</div>
+  </div>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-btn-login"    onclick="switchTab('login', this)"   >🔐 Login</button>
+    <button class="tab-btn"        id="tab-btn-transfer" onclick="switchTab('transfer', this)">💸 Transfer</button>
+  </div>
+
+  <!-- ── Login Tab ── -->
+  <div id="tab-login">
+    <div class="card">
+      <h3>🔐 Login to SecureBank</h3>
+      <div id="login-warning" class="alert alert-warn" style="margin-bottom:16px;">
+        ⚠️ HTTP Mode: Your credentials will be sent in <strong>PLAINTEXT</strong> — visible to any attacker!
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="login-user" value="alice" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-pass" value="alice123" />
+      </div>
+      <button class="send-btn" id="login-btn" onclick="sendLogin()">
+        🔐 Login
+      </button>
+    </div>
+    <div class="card" id="login-status-card" style="display:none;">
+      <h3>📋 Login Status</h3>
+      <div id="login-status"></div>
+    </div>
+  </div>
+
+  <!-- ── Transfer Tab ── -->
+  <div id="tab-transfer" style="display:none;">
+    <div class="card">
+      <h3>💸 Send Money</h3>
+      <div class="form-group">
+        <label>From</label>
+        <select id="sender">
+          <option value="Alice">👩 Alice Johnson — Savings</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <select id="recipient">
+          <option value="Bob">👨 Bob Smith</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Amount (₹)</label>
+        <input type="number" id="amount" value="100" min="1" max="50000" />
+      </div>
+      <button class="send-btn" id="send-btn" onclick="sendTransfer()">
+        💸 Send Transfer
+      </button>
+    </div>
+    <div class="card">
+      <h3>📋 Recent Transfers</h3>
+      <div id="status"></div>
+      <div id="tx-list"></div>
+    </div>
+  </div>
+</main>
+
+<div class="footer-bar">
+  <span class="lock-icon" id="lock-icon">🔓</span>
+  <span id="footer-text">Connected via HTTP — data is unencrypted</span>
+</div>
+
+<script>
+const socket = io();
+let balances = { Alice: 5000, Bob: 3000 };
+
+// Get initial state
+fetch('/state').then(r=>r.json()).then(s => {
+  balances = s.balances;
+  updateUI(s);
+});
+
+function updateUI(s) {
+  document.getElementById('balance').textContent = '₹' + balances['Alice'].toLocaleString();
+  const badge = document.getElementById('mode-badge');
+  const lockIcon = document.getElementById('lock-icon');
+  const footerText = document.getElementById('footer-text');
+  if (s.https_mode) {
+    badge.textContent = '🔒 HTTPS MODE'; badge.className = '';
+    lockIcon.textContent = '🔒';
+    footerText.textContent = 'Connected via HTTPS — data is encrypted with TLS';
+  } else if (s.attack_active) {
+    badge.textContent = '⚠️ UNDER ATTACK'; badge.className = 'unsafe';
+    lockIcon.textContent = '🔓';
+    footerText.textContent = '⚠️ HTTP — MITM attack active!';
+  } else {
+    badge.textContent = '⚠️ HTTP MODE'; badge.className = 'unsafe';
+    lockIcon.textContent = '🔓';
+    footerText.textContent = 'Connected via HTTP — data is unencrypted';
+  }
+  updateLoginWarning(s);
+}
+
+async function sendTransfer() {
+  const amount = parseInt(document.getElementById('amount').value);
+  const sender = document.getElementById('sender').value;
+  const recipient = document.getElementById('recipient').value;
+  if (!amount || amount <= 0) return;
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  document.getElementById('status').innerHTML =
+    `<div class="sending">📡 Sending packet... <div class="dot-pulse"><span></span><span></span><span></span></div></div>`;
+
+  await fetch('/transfer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sender, recipient, amount })
+  });
+  btn.disabled = false;
+}
+
+socket.on('bank_update', data => {
+  const tx = data.transaction;
+  balances = data.balances;
+  document.getElementById('balance').textContent = '₹' + balances['Alice'].toLocaleString();
+
+  let statusHTML = '';
+  if (tx.tampered) {
+    statusHTML = `<div class="alert alert-warn">⚠️ Transfer sent! But hacker changed ₹${tx.amount} was delivered!</div>`;
+  } else {
+    statusHTML = `<div class="alert alert-success">✅ ₹${tx.amount} sent to ${tx.recipient} successfully!</div>`;
+  }
+  document.getElementById('status').innerHTML = statusHTML;
+
+  const div = document.createElement('div');
+  div.className = 'tx-item' + (tx.tampered ? ' tampered' : '');
+  div.innerHTML = `<span>${tx.time} — To ${tx.recipient}</span><span class="amount">₹${tx.amount.toLocaleString()}</span>`;
+  document.getElementById('tx-list').prepend(div);
+});
+
+socket.on('transfer_error', d => {
+  document.getElementById('status').innerHTML = `<div class="alert alert-danger">❌ ${d.msg}</div>`;
+  document.getElementById('send-btn').disabled = false;
+});
+
+// ── Tab switching ─────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-login').style.display    = tab === 'login'    ? 'block' : 'none';
+  document.getElementById('tab-transfer').style.display = tab === 'transfer' ? 'block' : 'none';
+}
+
+// ── Login ────────────────────────────────────────────────────────────────────────
+async function sendLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  if (!username || !password) return;
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = '⏳ Logging in...';
+  await fetch('/login', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password})
+  });
+  btn.disabled = false; btn.textContent = '🔐 Login';
+}
+
+function updateLoginWarning(s) {
+  const warn = document.getElementById('login-warning');
+  if (!warn) return;
+  if (s.https_mode) {
+    warn.className = 'alert alert-success';
+    warn.innerHTML = '✅ HTTPS Mode: Your credentials will be <strong>encrypted</strong> before transmission — attacker cannot read them.';
+  } else if (s.attack_active) {
+    warn.className = 'alert alert-danger';
+    warn.innerHTML = '🚨 MITM ATTACK ACTIVE: Your credentials will be <strong>stolen</strong> the moment you login!';
+  } else {
+    warn.className = 'alert alert-warn';
+    warn.innerHTML = '⚠️ HTTP Mode: Your credentials will be sent in <strong>PLAINTEXT</strong> — visible to any attacker!';
+  }
+}
+
+socket.on('login_result', data => {
+  const card = document.getElementById('login-status-card');
+  card.style.display = 'block';
+  const isSecure = data.mode === 'HTTPS';
+  document.getElementById('login-status').innerHTML = `
+    <div class="alert ${isSecure ? 'alert-success' : 'alert-warn'}">
+      ${isSecure ? '✅' : '⚠️'} Logged in as <strong>${data.username}</strong> via <strong>${data.mode}</strong> —
+      ${isSecure ? 'credentials were <strong>encrypted</strong> &amp; protected' : 'credentials sent in <strong>PLAINTEXT</strong> — attacker captured them!'}
+    </div>`;
+});
+
+socket.on('mode_change', updateUI);
+socket.on('reset_all', () => { location.reload(); });
+</script>
+</body>
+</html>
