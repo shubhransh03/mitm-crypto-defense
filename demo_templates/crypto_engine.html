@@ -269,9 +269,9 @@
     <button class="view-tab" id="tab-transfer" onclick="switchView('transfer')">💸 Last Transfer Flow</button>
   </div>
 
-  <div id="login-view" style="display:none;">
-    <!-- Credential Analysis Card (shown on login events) -->
-    <div id="cred-card" class="mod-card">
+  <!-- Credential Analysis Section -->
+  <div id="login-anchor"></div>
+    <div id="cred-card" class="mod-card" style="display:none;">
     <div class="mod-header">
       <span class="mod-icon">🔑</span>
       <div>
@@ -334,8 +334,8 @@
     </div>
   </div>
 
-  <div id="transfer-view" style="display:none;">
-    <!-- Attack Blocked Banner (shown when HTTPS is ON but attack was attempted) -->
+  <!-- Transfer Analysis Section -->
+  <div id="transfer-anchor"></div>
   <div id="attack-blocked-banner">
     <div class="blocked-icon">🛡️</div>
     <div style="flex:1;">
@@ -664,11 +664,16 @@ let hasSeenLogin = false;
 let hasSeenTransfer = false;
 
 function switchView(view) {
-  document.getElementById('login-view').style.display    = (view === 'login') ? 'block' : 'none';
-  document.getElementById('transfer-view').style.display = (view === 'transfer') ? 'block' : 'none';
-  document.getElementById('tab-login').className         = 'view-tab' + (view === 'login' ? ' active' : '');
-  document.getElementById('tab-transfer').className      = 'view-tab' + (view === 'transfer' ? ' active' : '');
-  document.getElementById('main-tabs').style.display     = 'flex';
+  // Show the cred card only if login happened
+  if (view === 'login') {
+    document.getElementById('cred-card').style.display = 'block';
+    document.getElementById('login-anchor').scrollIntoView({behavior:'smooth'});
+  } else {
+    document.getElementById('transfer-anchor').scrollIntoView({behavior:'smooth'});
+  }
+  document.getElementById('tab-login').className    = 'view-tab' + (view === 'login' ? ' active' : '');
+  document.getElementById('tab-transfer').className = 'view-tab' + (view === 'transfer' ? ' active' : '');
+  document.getElementById('main-tabs').style.display = 'flex';
 }
 
 // ── Show main page ────────────────────────────────────────────────────────────
@@ -974,8 +979,9 @@ socket.on('login_crypto_update', data => {
   setBadge('cred-badge',
     cred.password_exposed ? '✖ EXPOSED' : '✓ ENCRYPTED',
     cred.password_exposed ? 'fail' : 'ok');
-  // Card state — set directly to preserve 'visible' class correctly
-  card.className = 'mod-card visible ' + (cred.password_exposed ? 'fail' : 'ok');
+  // Card state — show it and style it
+  card.style.display = 'block';
+  card.className = 'mod-card ' + (cred.password_exposed ? 'fail' : 'ok');
 
   // Username
   set('cred-username', cred.username);
